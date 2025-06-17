@@ -1,18 +1,15 @@
-package com.example.pixelart.viewmodel
+package com.example.pixelart.ui.coloring
 
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.pixelart.data.Pixel
-import com.example.pixelart.util.ImageProcessor
+import com.example.pixelart.domain.processing.ImageProcessor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 class PixelArtViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(PixelArtUiState())

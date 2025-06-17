@@ -1,4 +1,4 @@
-package com.example.pixelart.util
+package com.example.pixelart.domain.processing
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -13,12 +13,11 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.size.Size
-import com.example.pixelart.data.Pixel
-import com.example.pixelart.data.PixelArt
+import com.example.pixelart.data.model.PixelArt
+import com.example.pixelart.data.model.Pixel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.pow
-
 
 object ImageProcessor {
     suspend fun imageToPixelArt(
@@ -57,7 +56,7 @@ object ImageProcessor {
     private suspend fun loadBitmap(context: Context, imageUri: Uri): Bitmap {
         val loader = ImageLoader(context)
         val request =
-            ImageRequest.Builder(context).data(imageUri).size(Size.ORIGINAL).allowHardware(false)
+            ImageRequest.Builder(context).data(imageUri).size(Size.Companion.ORIGINAL).allowHardware(false)
                 .build()
         val result = loader.execute(request)
         return when (result) {

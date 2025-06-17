@@ -1,4 +1,4 @@
-package com.example.pixelart.ui
+package com.example.pixelart.ui.coloring
 
 import android.graphics.Paint
 import android.net.Uri
@@ -56,8 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.pixelart.data.Pixel
-import com.example.pixelart.viewmodel.PixelArtViewModel
+import com.example.pixelart.data.model.Pixel
 
 @Composable
 fun PixelArtScreen(

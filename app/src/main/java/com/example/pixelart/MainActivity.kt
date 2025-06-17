@@ -1,6 +1,5 @@
 package com.example.pixelart
 
-import com.example.pixelart.ui.PixelArtScreen
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.example.pixelart.ui.navigation.AppNavigation
 import com.example.pixelart.ui.theme.PixelArtTheme
 
 class MainActivity : ComponentActivity() {
@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    PixelArtScreen()
+                    AppNavigation()
                 }
             }
         }

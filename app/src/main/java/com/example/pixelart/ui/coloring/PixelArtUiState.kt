@@ -1,8 +1,8 @@
-package com.example.pixelart.viewmodel
+package com.example.pixelart.ui.coloring
 
 import android.net.Uri
 import androidx.compose.ui.graphics.Color
-import com.example.pixelart.data.Pixel
+import com.example.pixelart.data.model.Pixel
 
 data class PixelArtUiState(
     val grid: List<List<Pixel>> = emptyList(),

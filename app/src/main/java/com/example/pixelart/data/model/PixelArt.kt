@@ -1,4 +1,4 @@
-package com.example.pixelart.data
+package com.example.pixelart.data.model
 
 import androidx.compose.ui.graphics.Color
 
