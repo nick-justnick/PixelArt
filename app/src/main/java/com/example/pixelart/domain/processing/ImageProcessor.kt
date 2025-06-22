@@ -13,8 +13,8 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.size.Size
-import com.example.pixelart.data.model.PixelArt
 import com.example.pixelart.data.model.Pixel
+import com.example.pixelart.data.model.PixelArt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.pow
@@ -56,7 +56,8 @@ object ImageProcessor {
     private suspend fun loadBitmap(context: Context, imageUri: Uri): Bitmap {
         val loader = ImageLoader(context)
         val request =
-            ImageRequest.Builder(context).data(imageUri).size(Size.Companion.ORIGINAL).allowHardware(false)
+            ImageRequest.Builder(context).data(imageUri).size(Size.Companion.ORIGINAL)
+                .allowHardware(false)
                 .build()
         val result = loader.execute(request)
         return when (result) {

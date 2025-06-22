@@ -7,6 +7,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.pixelart.ui.coloring.PixelArtScreen
+import com.example.pixelart.ui.gallery.GalleryScreen
 
 @Composable
 fun AppNavigation() {

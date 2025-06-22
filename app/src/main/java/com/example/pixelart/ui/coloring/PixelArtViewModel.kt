@@ -1,47 +1,62 @@
 package com.example.pixelart.ui.coloring
 
-import android.content.Context
-import android.net.Uri
-import android.util.Log
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.pixelart.domain.processing.ImageProcessor
+import com.example.pixelart.data.model.ArtProject
+import com.example.pixelart.data.repository.ArtProjectRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class PixelArtViewModel : ViewModel() {
+class PixelArtViewModel(
+    private val repository: ArtProjectRepository,
+    private val projectId: Long
+) : ViewModel() {
+
     private val _uiState = MutableStateFlow(PixelArtUiState())
     val uiState = _uiState.asStateFlow()
 
-    fun onImageSelected(imageUri: Uri?) {
-        if (imageUri == null) return
-        _uiState.update { it.copy(selectedImageUri = imageUri, showSettingsDialog = true) }
+    init {
+        if (projectId != -1L) loadProject()
     }
 
-    fun dismissDialogue() {
-        _uiState.update { it.copy(showSettingsDialog = false, selectedImageUri = null) }
-    }
-
-    fun createPixelArt(context: Context, width: Int, colorCount: Int) {
-        val imageUri = _uiState.value.selectedImageUri ?: return
+    private fun loadProject() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, showSettingsDialog = false) }
-            try {
-                val result = ImageProcessor.imageToPixelArt(context, imageUri, width, colorCount)
+            _uiState.update { it.copy(isLoading = true) }
+            val project = repository.getProjectById(projectId)
+            if (project != null) {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        grid = result.grid,
-                        palette = result.palette,
-                        selectedColorIndex = 0
+                        grid = project.gridState,
+                        palette = project.palette
                     )
                 }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false) }
-                Log.e("PixelArtViewModel", "Error creating pixel art", e)
             }
+        }
+    }
+
+    fun colorAllPixels() {
+        _uiState.update {
+            it.copy(
+                grid = it.grid.map { it.map { pixel -> pixel.copy(isColored = true) } }
+            )
+        }
+    }
+
+    fun saveProgress() {
+        if (projectId == -1L || _uiState.value.grid.isEmpty()) return
+
+        viewModelScope.launch {
+            val currentProjectState = ArtProject(
+                id = projectId,
+                gridState = _uiState.value.grid,
+                palette = _uiState.value.palette,
+                thumbnail = null
+            )
+            repository.updateProject(currentProjectState)
         }
     }
 
@@ -66,5 +81,18 @@ class PixelArtViewModel : ViewModel() {
 
     fun selectColor(index: Int) {
         _uiState.update { it.copy(selectedColorIndex = index) }
+    }
+}
+
+class PixelArtViewModelFactory(
+    private val repository: ArtProjectRepository,
+    private val projectId: Long
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(PixelArtViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return PixelArtViewModel(repository, projectId) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }

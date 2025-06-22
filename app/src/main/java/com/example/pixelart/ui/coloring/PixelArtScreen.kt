@@ -1,10 +1,6 @@
 package com.example.pixelart.ui.coloring
 
 import android.graphics.Paint
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,30 +10,25 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -50,30 +41,48 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import com.example.pixelart.PixelArtApplication
 import com.example.pixelart.data.model.Pixel
+import com.example.pixelart.data.repository.ArtProjectRepository
 
 @Composable
 fun PixelArtScreen(
-    modifier: Modifier = Modifier,
-    viewModel: PixelArtViewModel = viewModel()
+    navController: NavController,
+    projectId: Long,
+    modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val repository = remember {
+        ArtProjectRepository(
+            (context.applicationContext as PixelArtApplication).database.artProjectDao()
+        )
+    }
+    val viewModel: PixelArtViewModel =
+        viewModel(factory = PixelArtViewModelFactory(repository, projectId))
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = PickVisualMedia(),
-        onResult = { uri: Uri? -> viewModel.onImageSelected(uri) }
-    )
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                viewModel.saveProgress()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
-    Box(
-        modifier = modifier.fillMaxSize()
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -101,17 +110,11 @@ fun PixelArtScreen(
                         .fillMaxWidth()
                         .padding(vertical = 16.dp)
                 )
-            } else if (!uiState.isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Button(
-                        onClick = {
-                            photoPickerLauncher.launch(
-                                PickVisualMediaRequest(PickVisualMedia.ImageOnly)
-                            )
-                        }
-                    ) {
-                        Text("Create New Pixel Art")
-                    }
+                Button(onClick = viewModel::colorAllPixels) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = null
+                    )
                 }
             }
         }
@@ -126,68 +129,7 @@ fun PixelArtScreen(
                 CircularProgressIndicator()
             }
         }
-
-        if (uiState.showSettingsDialog) {
-            SettingsDialog(
-                onDismiss = viewModel::dismissDialogue,
-                onConfirm = { width, colorCount ->
-                    viewModel.createPixelArt(context, width, colorCount)
-                }
-            )
-        }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SettingsDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (width: Int, colorCount: Int) -> Unit,
-) {
-    var width by remember { mutableStateOf("64") }
-    var colorCount by remember { mutableStateOf("16") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Configure Artwork") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = width,
-                    onValueChange = { width = it },
-                    label = { Text("Grid Width") },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Next
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = colorCount,
-                    onValueChange = { colorCount = it },
-                    label = { Text("Number of Colors") },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Done
-                    )
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                val widthInt = width.toIntOrNull() ?: 64
-                val colorsInt = colorCount.toIntOrNull() ?: 16
-                onConfirm(widthInt, colorsInt)
-            }) {
-                Text("Create")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
 }
 
 @Composable
