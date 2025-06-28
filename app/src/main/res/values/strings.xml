@@ -3,4 +3,5 @@
     <string name="create_new_project">Create New Project</string>
     <string name="no_projects_yet_tap_to_create_one">No projects yet. Tap \'+\' to create one.</string>
     <string name="project_thumbnail">Project Thumbnail</string>
+    <string name="done">Done</string>
 </resources>
