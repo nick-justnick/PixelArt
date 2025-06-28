@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +33,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -40,12 +45,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -177,8 +185,14 @@ fun PixelArtGrid(
     modifier: Modifier = Modifier
 ) {
     val rows = grid.size
+    if (rows == 0) return
     val cols = grid.first().size
+    if (cols == 0) return
     val aspectRatio = cols.toFloat() / rows.toFloat()
+
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var layoutSize by remember { mutableStateOf(IntSize.Zero) }
 
     val textPaint = remember {
         Paint().apply {
@@ -188,62 +202,98 @@ fun PixelArtGrid(
         }
     }
 
-    Canvas(
+    val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
+        val newScale = (scale * zoomChange).coerceIn(1f, cols / 8f)
+
+        val canvasSize = Size(layoutSize.width.toFloat(), layoutSize.height.toFloat())
+        val gridSize = canvasSize * newScale
+        val maxOffset = Offset(
+            x = (gridSize.width - canvasSize.width).coerceAtLeast(0f) / 2f,
+            y = (gridSize.height - canvasSize.height).coerceAtLeast(0f) / 2f
+        )
+        val minOffset = -maxOffset
+
+        offset = (offset + panChange).let {
+            Offset(
+                x = it.x.coerceIn(minOffset.x, maxOffset.x),
+                y = it.y.coerceIn(minOffset.y, maxOffset.y)
+            )
+        }
+        scale = newScale
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .aspectRatio(aspectRatio)
-            .pointerInput(Unit) {
-                detectTapGestures { offset ->
+            .onSizeChanged { layoutSize = it }
+            .pointerInput(grid) {
+                detectTapGestures { tapOffset ->
+                    val centeredTap = tapOffset - Offset(size.width / 2f, size.height / 2f)
+                    val transformedOffset = (centeredTap - offset) / scale
+                    val originalTap = transformedOffset + Offset(size.width / 2f, size.height / 2f)
                     val cellWidth = size.width / cols
                     val cellHeight = size.height / rows
-                    val col = (offset.x / cellWidth).toInt().coerceIn(0, cols - 1)
-                    val row = (offset.y / cellHeight).toInt().coerceIn(0, rows - 1)
+                    val col = (originalTap.x / cellWidth).toInt().coerceIn(0, cols - 1)
+                    val row = (originalTap.y / cellHeight).toInt().coerceIn(0, rows - 1)
                     onPixelTapped(row, col)
                 }
             }
+            .transformable(state = transformableState)
     ) {
-        val cellWidth = size.width / cols
-        val cellHeight = size.height / rows
-        val cellSize = Size(cellWidth, cellHeight)
-        textPaint.textSize = minOf(cellWidth, cellHeight) * 0.5f
+        Canvas(
+            modifier = modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                }
+        ) {
+            val cellWidth = size.width / cols
+            val cellHeight = size.height / rows
+            val cellSize = Size(cellWidth, cellHeight)
+            textPaint.textSize = minOf(cellWidth, cellHeight) * 0.5f
 
-        for (row in 0 until rows) {
-            for (col in 0 until cols) {
-                val pixel = grid[row][col]
-                val topLeft = Offset(col * cellWidth, row * cellHeight)
+            for (row in 0 until rows) {
+                for (col in 0 until cols) {
+                    val pixel = grid[row][col]
+                    val topLeft = Offset(col * cellWidth, row * cellHeight)
 
-                if (pixel.isColored) {
-                    drawRect(
-                        color = palette[pixel.colorIndex],
-                        topLeft = topLeft,
-                        size = cellSize
-                    )
-                } else {
-                    drawRect(
-                        color = Color.White,
-                        topLeft = topLeft,
-                        size = cellSize
-                    )
-                    if (pixel.colorIndex == selectedColorIndex) {
+                    if (pixel.isColored) {
                         drawRect(
-                            color = Color.DarkGray.copy(alpha = 0.5f),
+                            color = palette[pixel.colorIndex],
                             topLeft = topLeft,
                             size = cellSize
                         )
-                    }
-                    drawRect(
-                        color = Color.LightGray,
-                        topLeft = topLeft,
-                        size = cellSize,
-                        style = Stroke(width = 1.dp.toPx())
-                    )
-                    drawIntoCanvas {
-                        it.nativeCanvas.drawText(
-                            (pixel.colorIndex + 1).toString(),
-                            topLeft.x + cellWidth / 2,
-                            topLeft.y + cellHeight / 2 - (textPaint.descent() + textPaint.ascent()) / 2,
-                            textPaint
+                    } else {
+                        drawRect(
+                            color = Color.White,
+                            topLeft = topLeft,
+                            size = cellSize
                         )
+                        if (pixel.colorIndex == selectedColorIndex) {
+                            drawRect(
+                                color = Color.DarkGray.copy(alpha = 0.5f),
+                                topLeft = topLeft,
+                                size = cellSize
+                            )
+                        }
+                        drawRect(
+                            color = Color.LightGray,
+                            topLeft = topLeft,
+                            size = cellSize,
+                            style = Stroke(width = 1.dp.toPx())
+                        )
+                        drawIntoCanvas {
+                            it.nativeCanvas.drawText(
+                                (pixel.colorIndex + 1).toString(),
+                                topLeft.x + cellWidth / 2,
+                                topLeft.y + cellHeight / 2 - (textPaint.descent() + textPaint.ascent()) / 2,
+                                textPaint
+                            )
+                        }
                     }
                 }
             }
@@ -314,7 +364,7 @@ fun ColorPalette(
                                     .width(32.dp),
                                 color = color.copy(alpha = 0.8f),
                                 trackColor = textColor.copy(alpha = 0.5f),
-                                strokeCap = StrokeCap.Butt,
+                                strokeCap = StrokeCap.Round,
                                 drawStopIndicator = {}
                             )
                         }
