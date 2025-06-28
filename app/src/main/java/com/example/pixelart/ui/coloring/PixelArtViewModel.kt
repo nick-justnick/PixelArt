@@ -41,7 +41,7 @@ class PixelArtViewModel(
     fun colorAllPixels() {
         _uiState.update {
             it.copy(
-                grid = it.grid.map { it.map { pixel -> pixel.copy(isColored = true) } }
+                grid = it.grid.map { row -> row.map { pixel -> pixel.copy(isColored = true) } }
             )
         }
     }

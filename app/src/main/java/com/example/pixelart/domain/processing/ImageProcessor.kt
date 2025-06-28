@@ -63,10 +63,9 @@ object ImageProcessor {
         return when (result) {
             is SuccessResult -> {
                 val drawable = result.image.asDrawable(context.resources)
-                if (drawable is BitmapDrawable) {
-                    drawable.bitmap
-                } else {
-                    throw IllegalStateException("Unsupported drawable type")
+                when (drawable) {
+                    is BitmapDrawable -> drawable.bitmap
+                    else -> throw IllegalStateException("Unsupported drawable type")
                 }
             }
 
@@ -75,7 +74,7 @@ object ImageProcessor {
     }
 
     private fun medianCut(labPixels: MutableList<DoubleArray>, colorCount: Int): List<DoubleArray> {
-        val buckets = mutableListOf(labPixels)
+        val buckets = mutableListOf(labPixels.map { it.copyOf() }.toMutableList())
         while (buckets.size < colorCount) {
             val bucketToSplit = buckets.maxByOrNull { bucket ->
                 val minLAB = DoubleArray(3) { i -> bucket.minOf { it[i] } }
