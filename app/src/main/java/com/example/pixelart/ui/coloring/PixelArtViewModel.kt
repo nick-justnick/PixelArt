@@ -71,8 +71,22 @@ class PixelArtViewModel(
         if (row !in grid.indices || col !in grid.first().indices) return
 
         val pixel = grid[row][col]
-        if (!pixel.isColored && pixel.colorIndex == currentState.selectedColorIndex) {
+        val cellKey = row to col
+
+        if (pixel.isColored) return
+
+        if (pixel.colorIndex == currentState.selectedColorIndex) {
             updateProgressAndGrid(pixel, row, col)
+            if (cellKey in currentState.wronglyColoredPixels) {
+                _uiState.update {
+                    it.copy(wronglyColoredPixels = it.wronglyColoredPixels - cellKey)
+                }
+            }
+        } else {
+            _uiState.update {
+                it.copy(wronglyColoredPixels =
+                    it.wronglyColoredPixels + (cellKey to it.selectedColorIndex))
+            }
         }
     }
 

@@ -21,7 +21,7 @@ fun AppNavigation() {
             arguments = listOf(navArgument("projectId") { type = NavType.LongType })
         ) { backStackEntry ->
             val projectId = backStackEntry.arguments?.getLong("projectId") ?: -1L
-            PixelArtScreen(navController = navController, projectId = projectId)
+            PixelArtScreen(projectId = projectId)
         }
     }
 }

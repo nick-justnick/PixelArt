@@ -39,9 +39,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -56,12 +58,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toSize
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavController
 import com.example.pixelart.PixelArtApplication
 import com.example.pixelart.R
 import com.example.pixelart.data.model.Pixel
@@ -70,7 +72,6 @@ import com.example.pixelart.data.repository.ArtProjectRepository
 
 @Composable
 fun PixelArtScreen(
-    navController: NavController,
     projectId: Long,
     modifier: Modifier = Modifier
 ) {
@@ -109,20 +110,27 @@ fun PixelArtScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                 ) {
-                    Box(modifier = Modifier.align(Alignment.Center)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RectangleShape)
+                    ) {
                         PixelArtGrid(
                             grid = uiState.grid,
                             palette = uiState.palette,
                             selectedColorIndex = uiState.selectedColorIndex,
+                            wronglyColoredPixels = uiState.wronglyColoredPixels,
                             onPixelTapped = viewModel::onPixelTapped,
+                            modifier = Modifier.align(Alignment.Center)
                         )
                     }
                     GlobalProgressIndicator(
                         progress = uiState.progress.globalProgress,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(16.dp)
+                            .padding(8.dp)
                     )
                 }
                 ColorPalette(
@@ -181,6 +189,7 @@ fun PixelArtGrid(
     grid: List<List<Pixel>>,
     palette: List<Color>,
     selectedColorIndex: Int,
+    wronglyColoredPixels: Map<Pair<Int, Int>, Int>,
     onPixelTapped: (row: Int, col: Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -188,6 +197,7 @@ fun PixelArtGrid(
     if (rows == 0) return
     val cols = grid.first().size
     if (cols == 0) return
+
     val aspectRatio = cols.toFloat() / rows.toFloat()
 
     var scale by remember { mutableFloatStateOf(1f) }
@@ -205,11 +215,11 @@ fun PixelArtGrid(
     val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
         val newScale = (scale * zoomChange).coerceIn(1f, cols / 8f)
 
-        val canvasSize = Size(layoutSize.width.toFloat(), layoutSize.height.toFloat())
+        val canvasSize = layoutSize.toSize()
         val gridSize = canvasSize * newScale
         val maxOffset = Offset(
-            x = (gridSize.width - canvasSize.width).coerceAtLeast(0f) / 2f,
-            y = (gridSize.height - canvasSize.height).coerceAtLeast(0f) / 2f
+            x = (gridSize.width - canvasSize.width).coerceAtLeast(0f),
+            y = (gridSize.height - canvasSize.height).coerceAtLeast(0f)
         )
         val minOffset = -maxOffset
 
@@ -224,7 +234,6 @@ fun PixelArtGrid(
 
     Box(
         modifier = modifier
-            .fillMaxSize()
             .aspectRatio(aspectRatio)
             .onSizeChanged { layoutSize = it }
             .pointerInput(grid) {
@@ -232,8 +241,10 @@ fun PixelArtGrid(
                     val centeredTap = tapOffset - Offset(size.width / 2f, size.height / 2f)
                     val transformedOffset = (centeredTap - offset) / scale
                     val originalTap = transformedOffset + Offset(size.width / 2f, size.height / 2f)
-                    val cellWidth = size.width / cols
-                    val cellHeight = size.height / rows
+
+                    val cellWidth = size.width.toFloat() / cols
+                    val cellHeight = size.height.toFloat() / rows
+
                     val col = (originalTap.x / cellWidth).toInt().coerceIn(0, cols - 1)
                     val row = (originalTap.y / cellHeight).toInt().coerceIn(0, rows - 1)
                     onPixelTapped(row, col)
@@ -256,43 +267,44 @@ fun PixelArtGrid(
             val cellSize = Size(cellWidth, cellHeight)
             textPaint.textSize = minOf(cellWidth, cellHeight) * 0.5f
 
+            val onScreenCellWidth = cellWidth * scale
+
             for (row in 0 until rows) {
                 for (col in 0 until cols) {
                     val pixel = grid[row][col]
                     val topLeft = Offset(col * cellWidth, row * cellHeight)
+                    val coords = row to col
 
                     if (pixel.isColored) {
-                        drawRect(
-                            color = palette[pixel.colorIndex],
-                            topLeft = topLeft,
-                            size = cellSize
-                        )
+                        drawRect(palette[pixel.colorIndex], topLeft, cellSize)
                     } else {
-                        drawRect(
-                            color = Color.White,
-                            topLeft = topLeft,
-                            size = cellSize
-                        )
-                        if (pixel.colorIndex == selectedColorIndex) {
-                            drawRect(
-                                color = Color.DarkGray.copy(alpha = 0.5f),
-                                topLeft = topLeft,
-                                size = cellSize
-                            )
+                        drawRect(Color.White, topLeft, cellSize)
+
+                        val wrongColorIndex = wronglyColoredPixels[coords]
+                        if (wrongColorIndex != null) {
+                            drawRect(palette[wrongColorIndex].copy(alpha = 0.5f), topLeft, cellSize)
                         }
+
+                        if (pixel.colorIndex == selectedColorIndex) {
+                            drawRect(Color.DarkGray.copy(alpha = 0.5f), topLeft, cellSize)
+                        }
+
                         drawRect(
                             color = Color.LightGray,
                             topLeft = topLeft,
                             size = cellSize,
-                            style = Stroke(width = 1.dp.toPx())
+                            style = Stroke(width = 1.dp.toPx() / scale)
                         )
-                        drawIntoCanvas {
-                            it.nativeCanvas.drawText(
-                                (pixel.colorIndex + 1).toString(),
-                                topLeft.x + cellWidth / 2,
-                                topLeft.y + cellHeight / 2 - (textPaint.descent() + textPaint.ascent()) / 2,
-                                textPaint
-                            )
+
+                        if (onScreenCellWidth > 16.dp.toPx()) {
+                            drawIntoCanvas {
+                                it.nativeCanvas.drawText(
+                                    (pixel.colorIndex + 1).toString(),
+                                    topLeft.x + cellWidth / 2,
+                                    topLeft.y + cellHeight / 2 - (textPaint.descent() + textPaint.ascent()) / 2,
+                                    textPaint
+                                )
+                            }
                         }
                     }
                 }

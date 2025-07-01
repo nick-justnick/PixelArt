@@ -11,5 +11,6 @@ data class PixelArtUiState(
     val selectedColorIndex: Int = -1,
     val isLoading: Boolean = false,
     val progress: ProgressState = ProgressState(),
-    internal val progressInfo: ProgressInfo = ProgressInfo()
+    internal val progressInfo: ProgressInfo = ProgressInfo(),
+    val wronglyColoredPixels: Map<Pair<Int, Int>, Int> = emptyMap()
 )
