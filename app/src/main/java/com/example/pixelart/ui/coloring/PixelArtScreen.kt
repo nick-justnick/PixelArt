@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,24 +42,28 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
+import androidx.core.graphics.createBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -204,12 +209,71 @@ fun PixelArtGrid(
     var offset by remember { mutableStateOf(Offset.Zero) }
     var layoutSize by remember { mutableStateOf(IntSize.Zero) }
 
-    val textPaint = remember {
-        Paint().apply {
-            color = android.graphics.Color.DKGRAY
-            textAlign = Paint.Align.CENTER
-            isAntiAlias = true
+    var mainBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var overlayBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+
+    val textMeasurer = rememberTextMeasurer()
+
+    LaunchedEffect(grid, layoutSize) {
+        if (layoutSize == IntSize.Zero) return@LaunchedEffect
+        val bitmap = createBitmap(layoutSize.width, layoutSize.height)
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = Paint()
+        val cellWidth = layoutSize.width.toFloat() / cols
+        val cellHeight = layoutSize.height.toFloat() / rows
+
+        grid.forEachIndexed { row, pixelRow ->
+            pixelRow.forEachIndexed { col, pixel ->
+                if (pixel.isColored) {
+                    paint.color = palette[pixel.colorIndex].toArgb()
+                    canvas.drawRect(
+                        col * cellWidth,
+                        row * cellHeight,
+                        (col + 1) * cellWidth,
+                        (row + 1) * cellHeight,
+                        paint
+                    )
+                }
+            }
         }
+        mainBitmap = bitmap.asImageBitmap()
+    }
+
+    LaunchedEffect(wronglyColoredPixels, selectedColorIndex, layoutSize) {
+        if (layoutSize == IntSize.Zero) return@LaunchedEffect
+        val bitmap = createBitmap(layoutSize.width, layoutSize.height)
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = Paint()
+        val cellWidth = layoutSize.width.toFloat() / cols
+        val cellHeight = layoutSize.height.toFloat() / rows
+
+        if (selectedColorIndex != -1) {
+            paint.color = Color.Gray.copy(alpha = 0.4f).toArgb()
+            grid.forEachIndexed { row, pixelRow ->
+                pixelRow.forEachIndexed { col, pixel ->
+                    if (!pixel.isColored && pixel.colorIndex == selectedColorIndex) {
+                        canvas.drawRect(
+                            col * cellWidth,
+                            row * cellHeight,
+                            (col + 1) * cellWidth,
+                            (row + 1) * cellHeight,
+                            paint
+                        )
+                    }
+                }
+            }
+        }
+        wronglyColoredPixels.forEach { (pos, colorIndex) ->
+            paint.color = palette[colorIndex].copy(alpha = 0.5f).toArgb()
+            canvas.drawRect(
+                pos.second * cellWidth,
+                pos.first * cellHeight,
+                (pos.second + 1) * cellWidth,
+                (pos.first + 1) * cellHeight,
+                paint
+            )
+        }
+        overlayBitmap = bitmap.asImageBitmap()
     }
 
     val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
@@ -264,47 +328,72 @@ fun PixelArtGrid(
         ) {
             val cellWidth = size.width / cols
             val cellHeight = size.height / rows
-            val cellSize = Size(cellWidth, cellHeight)
-            textPaint.textSize = minOf(cellWidth, cellHeight) * 0.5f
+
+            drawRect(Color.White, size = size)
+
+            overlayBitmap?.let {
+                drawImage(it, filterQuality = FilterQuality.None)
+            }
+
+            val strokeWidth = 2.dp.toPx() / scale
+            for (i in 0..cols) {
+                val x = i * cellWidth
+                drawLine(
+                    Color.LightGray,
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = strokeWidth
+                )
+            }
+            for (i in 0..rows) {
+                val y = i * cellHeight
+                drawLine(
+                    Color.LightGray,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = strokeWidth
+                )
+            }
+
+            mainBitmap?.let {
+                drawImage(it, filterQuality = FilterQuality.None)
+            }
 
             val onScreenCellWidth = cellWidth * scale
+            if (onScreenCellWidth > 16.dp.toPx()) {
+                val buffer = 3
+                val topLeftVisible = (-offset / scale) + Offset(size.width / 2f, size.height / 2f)
+                val bottomRightVisible = topLeftVisible + Offset(size.width, size.height) // TODO
 
-            for (row in 0 until rows) {
-                for (col in 0 until cols) {
-                    val pixel = grid[row][col]
-                    val topLeft = Offset(col * cellWidth, row * cellHeight)
-                    val coords = row to col
+                val firstVisibleRow =
+                    ((topLeftVisible.y / cellHeight) - buffer).toInt().coerceIn(0, rows - 1)
+                val lastVisibleRow =
+                    ((bottomRightVisible.y / cellHeight) + buffer).toInt().coerceIn(0, rows - 1)
+                val firstVisibleCol =
+                    ((topLeftVisible.x / cellWidth) - buffer).toInt().coerceIn(0, cols - 1)
+                val lastVisibleCol =
+                    ((bottomRightVisible.x / cellWidth) + buffer).toInt().coerceIn(0, cols - 1)
 
-                    if (pixel.isColored) {
-                        drawRect(palette[pixel.colorIndex], topLeft, cellSize)
-                    } else {
-                        drawRect(Color.White, topLeft, cellSize)
+                val textStyle = TextStyle(
+                    color = Color.DarkGray,
+                    fontSize = (minOf(cellWidth, cellHeight) / 2).toSp()
+                )
 
-                        val wrongColorIndex = wronglyColoredPixels[coords]
-                        if (wrongColorIndex != null) {
-                            drawRect(palette[wrongColorIndex].copy(alpha = 0.5f), topLeft, cellSize)
-                        }
-
-                        if (pixel.colorIndex == selectedColorIndex) {
-                            drawRect(Color.DarkGray.copy(alpha = 0.5f), topLeft, cellSize)
-                        }
-
-                        drawRect(
-                            color = Color.LightGray,
-                            topLeft = topLeft,
-                            size = cellSize,
-                            style = Stroke(width = 1.dp.toPx() / scale)
-                        )
-
-                        if (onScreenCellWidth > 16.dp.toPx()) {
-                            drawIntoCanvas {
-                                it.nativeCanvas.drawText(
-                                    (pixel.colorIndex + 1).toString(),
-                                    topLeft.x + cellWidth / 2,
-                                    topLeft.y + cellHeight / 2 - (textPaint.descent() + textPaint.ascent()) / 2,
-                                    textPaint
+                for (row in firstVisibleRow..lastVisibleRow) {
+                    for (col in firstVisibleCol..lastVisibleCol) {
+                        val pixel = grid[row][col]
+                        if (!pixel.isColored) {
+                            val textLayoutResult = textMeasurer.measure(
+                                text = (pixel.colorIndex + 1).toString(),
+                                style = textStyle
+                            )
+                            drawText(
+                                textLayoutResult = textLayoutResult,
+                                topLeft = Offset(
+                                    x = (col * cellWidth) + (cellWidth - textLayoutResult.size.width) / 2,
+                                    y = (row * cellHeight) + (cellHeight - textLayoutResult.size.height) / 2
                                 )
-                            }
+                            )
                         }
                     }
                 }
