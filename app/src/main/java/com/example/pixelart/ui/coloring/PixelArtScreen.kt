@@ -41,9 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -64,7 +62,6 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.toSize
 import androidx.core.graphics.createBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -88,6 +85,7 @@ fun PixelArtScreen(
             (context.applicationContext as PixelArtApplication).database.artProjectDao()
         )
     }
+
     val viewModel: PixelArtViewModel =
         viewModel(factory = PixelArtViewModelFactory(repository, projectId))
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -95,9 +93,8 @@ fun PixelArtScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) {
+            if (event == Lifecycle.Event.ON_PAUSE)
                 viewModel.saveProgress()
-            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
@@ -117,8 +114,8 @@ fun PixelArtScreen(
     val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
         val newScale = (transformState.scale * zoomChange).coerceIn(1f, cols / 8f)
 
-        val gridAspectRatio = cols.toFloat() / rows.toFloat()
-        val viewportAspectRatio = viewportSize.width.toFloat() / viewportSize.height.toFloat()
+        val gridAspectRatio = cols.toFloat() / rows
+        val viewportAspectRatio = viewportSize.width.toFloat() / viewportSize.height
 
         val gridRenderSize = if (gridAspectRatio > viewportAspectRatio) {
             Size(viewportSize.width.toFloat(), viewportSize.width / gridAspectRatio)
@@ -128,8 +125,8 @@ fun PixelArtScreen(
 
         val scaledGridSize = gridRenderSize * newScale
         val maxOffset = Offset(
-            x = (scaledGridSize.width - viewportSize.width).coerceAtLeast(0f),
-            y = (scaledGridSize.height - viewportSize.height).coerceAtLeast(0f)
+            (scaledGridSize.width - viewportSize.width).coerceAtLeast(0f),
+            (scaledGridSize.height - viewportSize.height).coerceAtLeast(0f)
         )
         val minOffset = -maxOffset
 
@@ -137,8 +134,8 @@ fun PixelArtScreen(
             scale = newScale,
             offset = (transformState.offset + panChange).let {
                 Offset(
-                    x = it.x.coerceIn(minOffset.x, maxOffset.x),
-                    y = it.y.coerceIn(minOffset.y, maxOffset.y)
+                    it.x.coerceIn(minOffset.x, maxOffset.x),
+                    it.y.coerceIn(minOffset.y, maxOffset.y)
                 )
             }
         )
@@ -178,16 +175,8 @@ fun PixelArtScreen(
                                         gridRenderWidth = gridRenderHeight * gridAspectRatio
                                     }
 
-                                    val gridTopLeft = Offset(
-                                        (size.width - gridRenderWidth) / 2f,
-                                        (size.height - gridRenderHeight) / 2f
-                                    )
-
-                                    val tapRelativeToGrid = tapOffset - gridTopLeft
-                                    val centeredTap = tapRelativeToGrid - Offset(
-                                        gridRenderWidth / 2f,
-                                        gridRenderHeight / 2f
-                                    )
+                                    val centeredTap =
+                                        tapOffset - Offset(size.width / 2f, size.height / 2f)
                                     val transformedOffset =
                                         (centeredTap - transformState.offset) / transformState.scale
                                     val originalTap = transformedOffset + Offset(
@@ -398,16 +387,34 @@ fun PixelArtGrid(
             }
 
             val onScreenCellWidth = cellWidth * scale
-            if (onScreenCellWidth > 16.dp.toPx()) {
-                val gridCenter = size.center
-                val viewportCenterOnGrid = gridCenter - offset / scale
-                val viewportSizeOnGrid = viewportSize.toSize() / scale
+            if (onScreenCellWidth > 10.dp.toPx()) {
+                fun screenToGridCoordinates(screenOffset: Offset): Offset {
+                    val viewportAspectRatio = viewportSize.width.toFloat() / viewportSize.height
+                    val gridRenderWidth: Float
+                    val gridRenderHeight: Float
+                    if (aspectRatio > viewportAspectRatio) {
+                        gridRenderWidth = viewportSize.width.toFloat()
+                        gridRenderHeight = gridRenderWidth / aspectRatio
+                    } else {
+                        gridRenderHeight = viewportSize.height.toFloat()
+                        gridRenderWidth = gridRenderHeight * aspectRatio
+                    }
 
-                val visibleRectOnGrid = Rect(viewportCenterOnGrid, viewportSizeOnGrid)
-                val topLeftOnGrid = visibleRectOnGrid.topLeft
-                val bottomRightOnGrid = visibleRectOnGrid.bottomRight
+                    val centeredTap =
+                        screenOffset - Offset(viewportSize.width / 2f, viewportSize.height / 2f)
+                    val transformedOffset = (centeredTap - offset) / scale
+                    return transformedOffset + Offset(gridRenderWidth / 2f, gridRenderHeight / 2f)
+                }
 
-                val buffer = 3
+                val topLeftOnGrid = screenToGridCoordinates(Offset.Zero)
+                val bottomRightOnGrid = screenToGridCoordinates(
+                    Offset(
+                        viewportSize.width.toFloat(),
+                        viewportSize.height.toFloat()
+                    )
+                )
+
+                val buffer = 2
                 val firstVisibleRow =
                     ((topLeftOnGrid.y / cellHeight) - buffer).toInt().coerceIn(0, rows - 1)
                 val lastVisibleRow =
