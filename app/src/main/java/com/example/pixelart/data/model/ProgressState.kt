@@ -8,6 +8,6 @@ data class ProgressState(
 data class ProgressInfo(
     val totalPixels: Int = 0,
     val perColorTotal: List<Int> = emptyList(),
-    var perColorColored: MutableList<Int> = mutableListOf(),
-    var totalColored: Int = 0
+    val perColorColored: List<Int> = emptyList(),
+    val totalColored: Int = 0
 )

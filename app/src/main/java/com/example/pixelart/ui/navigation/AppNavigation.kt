@@ -13,9 +13,10 @@ import com.example.pixelart.ui.gallery.GalleryScreen
 fun AppNavigation() {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "gallery") {
-        composable("gallery") {
+        composable(route = "gallery") {
             GalleryScreen(navController = navController)
         }
+
         composable(
             route = "coloring/{projectId}",
             arguments = listOf(navArgument("projectId") { type = NavType.LongType })

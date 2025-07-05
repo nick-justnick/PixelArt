@@ -8,8 +8,8 @@ import kotlinx.serialization.json.Json
 
 class Converters {
     @TypeConverter
-    fun fromGridJson(json: String): List<List<Pixel>> {
-        return Json.decodeFromString(json)
+    fun fromGridJson(jsonString: String): List<List<Pixel>> {
+        return Json.decodeFromString(jsonString)
     }
 
     @TypeConverter
@@ -18,8 +18,8 @@ class Converters {
     }
 
     @TypeConverter
-    fun fromPaletteJson(json: String): List<Color> {
-        val intList = Json.decodeFromString<List<Int>>(json)
+    fun fromPaletteJson(jsonString: String): List<Color> {
+        val intList = Json.decodeFromString<List<Int>>(jsonString)
         return intList.map { Color(it) }
     }
 

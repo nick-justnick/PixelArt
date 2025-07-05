@@ -74,6 +74,23 @@ import com.example.pixelart.data.model.Pixel
 import com.example.pixelart.data.model.ProgressState
 import com.example.pixelart.data.repository.ArtProjectRepository
 
+private fun calculateGridRenderSize(
+    gridCols: Int,
+    gridRows: Int,
+    viewportSize: IntSize,
+): Size {
+    val viewportWidth = viewportSize.width.toFloat()
+    val viewportHeight = viewportSize.height.toFloat()
+    val gridAspectRatio = gridCols.toFloat() / gridRows.toFloat()
+    val viewportAspectRatio = viewportWidth / viewportHeight
+
+    return if (gridAspectRatio > viewportAspectRatio) {
+        Size(viewportWidth, viewportWidth / gridAspectRatio)
+    } else {
+        Size(viewportHeight * gridAspectRatio, viewportHeight)
+    }
+}
+
 @Composable
 fun PixelArtScreen(
     projectId: Long,
@@ -162,18 +179,10 @@ fun PixelArtScreen(
                             .clip(RectangleShape)
                             .pointerInput(grid) {
                                 detectTapGestures { tapOffset ->
-                                    val gridAspectRatio = cols.toFloat() / rows
-                                    val viewportAspectRatio = size.width.toFloat() / size.height
+                                    val gridRenderSize = calculateGridRenderSize(cols, rows, size)
 
-                                    val gridRenderWidth: Float
-                                    val gridRenderHeight: Float
-                                    if (gridAspectRatio > viewportAspectRatio) {
-                                        gridRenderWidth = size.width.toFloat()
-                                        gridRenderHeight = gridRenderWidth / gridAspectRatio
-                                    } else {
-                                        gridRenderHeight = size.height.toFloat()
-                                        gridRenderWidth = gridRenderHeight * gridAspectRatio
-                                    }
+                                    val gridRenderWidth = gridRenderSize.width
+                                    val gridRenderHeight = gridRenderSize.height
 
                                     val centeredTap =
                                         tapOffset - Offset(size.width / 2f, size.height / 2f)
@@ -270,7 +279,7 @@ fun PixelArtGrid(
     val aspectRatio = cols.toFloat() / rows.toFloat()
 
     var mainBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-    var overlayBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var highlightBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var layoutSize by remember { mutableStateOf(IntSize.Zero) }
     val textMeasurer = rememberTextMeasurer()
 
@@ -333,7 +342,7 @@ fun PixelArtGrid(
                 paint
             )
         }
-        overlayBitmap = bitmap.asImageBitmap()
+        highlightBitmap = bitmap.asImageBitmap()
     }
 
     Box(
@@ -358,9 +367,7 @@ fun PixelArtGrid(
 
             drawRect(Color.White, size = size)
 
-            overlayBitmap?.let {
-                drawImage(it, filterQuality = FilterQuality.None)
-            }
+            highlightBitmap?.let { drawImage(it, filterQuality = FilterQuality.None) }
 
             val strokeWidth = 1.dp.toPx() / scale
             for (i in 0..cols) {
@@ -382,23 +389,14 @@ fun PixelArtGrid(
                 )
             }
 
-            mainBitmap?.let {
-                drawImage(it, filterQuality = FilterQuality.None)
-            }
+            mainBitmap?.let { drawImage(it, filterQuality = FilterQuality.None) }
 
             val onScreenCellWidth = cellWidth * scale
             if (onScreenCellWidth > 10.dp.toPx()) {
                 fun screenToGridCoordinates(screenOffset: Offset): Offset {
-                    val viewportAspectRatio = viewportSize.width.toFloat() / viewportSize.height
-                    val gridRenderWidth: Float
-                    val gridRenderHeight: Float
-                    if (aspectRatio > viewportAspectRatio) {
-                        gridRenderWidth = viewportSize.width.toFloat()
-                        gridRenderHeight = gridRenderWidth / aspectRatio
-                    } else {
-                        gridRenderHeight = viewportSize.height.toFloat()
-                        gridRenderWidth = gridRenderHeight * aspectRatio
-                    }
+                    val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
+                    val gridRenderWidth = gridRenderSize.width
+                    val gridRenderHeight = gridRenderSize.height
 
                     val centeredTap =
                         screenOffset - Offset(viewportSize.width / 2f, viewportSize.height / 2f)

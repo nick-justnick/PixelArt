@@ -79,7 +79,7 @@ object ImageProcessor {
             val bucketToSplit = buckets.maxByOrNull { bucket ->
                 val minLAB = DoubleArray(3) { i -> bucket.minOf { it[i] } }
                 val maxLAB = DoubleArray(3) { i -> bucket.maxOf { it[i] } }
-                maxLAB.sum() - minLAB.sum()
+                (0..2).maxOf { i -> maxLAB[i] - minLAB[i] }
             } ?: break
             buckets.remove(bucketToSplit)
 

@@ -94,12 +94,20 @@ class PixelArtViewModel(
         val info = _uiState.value.progressInfo
         val colorIndex = pixel.colorIndex
 
-        info.totalColored++
-        info.perColorColored[colorIndex]++
+        val newPerColorColored = info.perColorColored.toMutableList().apply {
+            this[colorIndex] = this[colorIndex] + 1
+        }.toList()
 
-        val newGlobalProgress = info.totalColored.toFloat() / info.totalPixels
+        val newInfo = ProgressInfo(
+            totalPixels = info.totalPixels,
+            totalColored = info.totalColored + 1,
+            perColorTotal = info.perColorTotal,
+            perColorColored = newPerColorColored
+        )
+
+        val newGlobalProgress = newInfo.totalColored.toFloat() / newInfo.totalPixels
         val newPerColorProgress =
-            info.perColorColored[colorIndex].toFloat() / info.perColorTotal[colorIndex]
+            newInfo.perColorColored[colorIndex].toFloat() / newInfo.perColorTotal[colorIndex]
         val isColorDone = newPerColorProgress >= 1.0f
 
         _uiState.update { state ->
@@ -115,7 +123,7 @@ class PixelArtViewModel(
                         this[colorIndex] = newPerColorProgress
                     }
                 ),
-                progressInfo = info,
+                progressInfo = newInfo,
                 selectedColorIndex = if (isColorDone) -1 else state.selectedColorIndex
             )
         }
@@ -124,14 +132,6 @@ class PixelArtViewModel(
     fun selectColor(index: Int) {
         _uiState.update { it.copy(selectedColorIndex = index) }
     }
-
-//    fun colorAllPixels() {
-//        _uiState.update {
-//            it.copy(
-//                grid = it.grid.map { row -> row.map { pixel -> pixel.copy(isColored = true) } }
-//            )
-//        }
-//    }
 
     private fun calculateInitialProgress(
         grid: List<List<Pixel>>,
