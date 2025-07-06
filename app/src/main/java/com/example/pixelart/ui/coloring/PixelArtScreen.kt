@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -91,6 +92,12 @@ private fun calculateGridRenderSize(
     }
 }
 
+enum class GestureMode {
+    IDLE,
+    TRANSFORMING,
+    COLORING
+}
+
 @Composable
 fun PixelArtScreen(
     projectId: Long,
@@ -121,6 +128,7 @@ fun PixelArtScreen(
 
     var transformState by remember { mutableStateOf(TransformState()) }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
+    var gestureMode by remember { mutableStateOf(GestureMode.IDLE) }
 
     val grid = uiState.grid
     val rows = grid.size
@@ -128,34 +136,56 @@ fun PixelArtScreen(
     val cols = grid.first().size
     if (cols == 0) return
 
+    fun getCellAtOffset(tapOffset: Offset): Pair<Int, Int>? {
+        if (rows == 0 || cols == 0 || viewportSize == IntSize.Zero) return null
+
+        val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
+        val gridRenderWidth = gridRenderSize.width
+        val gridRenderHeight = gridRenderSize.height
+
+        val centeredTap = tapOffset - Offset(viewportSize.width / 2f, viewportSize.height / 2f)
+        val transformedOffset = (centeredTap - transformState.offset) / transformState.scale
+        val originalTap = transformedOffset + Offset(gridRenderWidth / 2f, gridRenderHeight / 2f)
+
+        val cellWidth = gridRenderWidth / cols
+        val cellHeight = gridRenderHeight / rows
+
+        val col = (originalTap.x / cellWidth).toInt()
+        val row = (originalTap.y / cellHeight).toInt()
+        return if (col in 0 until cols && row in 0 until rows) Pair(row, col) else null
+    }
+
     val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
-        val newScale = (transformState.scale * zoomChange).coerceIn(1f, cols / 8f)
+        if (gestureMode != GestureMode.COLORING) {
+            gestureMode = GestureMode.TRANSFORMING
+            val newScale = (transformState.scale * zoomChange).coerceIn(1f, cols / 8f)
 
-        val gridAspectRatio = cols.toFloat() / rows
-        val viewportAspectRatio = viewportSize.width.toFloat() / viewportSize.height
+            val gridAspectRatio = cols.toFloat() / rows
+            val viewportAspectRatio = viewportSize.width.toFloat() / viewportSize.height
 
-        val gridRenderSize = if (gridAspectRatio > viewportAspectRatio) {
-            Size(viewportSize.width.toFloat(), viewportSize.width / gridAspectRatio)
-        } else {
-            Size(viewportSize.height * gridAspectRatio, viewportSize.height.toFloat())
-        }
-
-        val scaledGridSize = gridRenderSize * newScale
-        val maxOffset = Offset(
-            (scaledGridSize.width - viewportSize.width).coerceAtLeast(0f),
-            (scaledGridSize.height - viewportSize.height).coerceAtLeast(0f)
-        )
-        val minOffset = -maxOffset
-
-        transformState = transformState.copy(
-            scale = newScale,
-            offset = (transformState.offset + panChange).let {
-                Offset(
-                    it.x.coerceIn(minOffset.x, maxOffset.x),
-                    it.y.coerceIn(minOffset.y, maxOffset.y)
-                )
+            val gridRenderSize = if (gridAspectRatio > viewportAspectRatio) {
+                Size(viewportSize.width.toFloat(), viewportSize.width / gridAspectRatio)
+            } else {
+                Size(viewportSize.height * gridAspectRatio, viewportSize.height.toFloat())
             }
-        )
+
+            val scaledGridSize = gridRenderSize * newScale
+            val maxOffset = Offset(
+                (scaledGridSize.width - viewportSize.width).coerceAtLeast(0f),
+                (scaledGridSize.height - viewportSize.height).coerceAtLeast(0f)
+            )
+            val minOffset = -maxOffset
+
+            transformState = transformState.copy(
+                scale = newScale,
+                offset = (transformState.offset + panChange).let {
+                    Offset(
+                        it.x.coerceIn(minOffset.x, maxOffset.x),
+                        it.y.coerceIn(minOffset.y, maxOffset.y)
+                    )
+                }
+            )
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -177,28 +207,43 @@ fun PixelArtScreen(
                             .fillMaxSize()
                             .onSizeChanged { viewportSize = it }
                             .clip(RectangleShape)
-                            .pointerInput(grid) {
-                                detectTapGestures { tapOffset ->
-                                    val gridRenderSize = calculateGridRenderSize(cols, rows, size)
-
-                                    val gridRenderWidth = gridRenderSize.width
-                                    val gridRenderHeight = gridRenderSize.height
-
-                                    val centeredTap =
-                                        tapOffset - Offset(size.width / 2f, size.height / 2f)
-                                    val transformedOffset =
-                                        (centeredTap - transformState.offset) / transformState.scale
-                                    val originalTap = transformedOffset + Offset(
-                                        gridRenderWidth / 2f,
-                                        gridRenderHeight / 2f
-                                    )
-                                    val cellWidth = gridRenderWidth / cols.toFloat()
-                                    val cellHeight = gridRenderHeight / rows.toFloat()
-
-                                    val col = (originalTap.x / cellWidth).toInt()
-                                    val row = (originalTap.y / cellHeight).toInt()
-                                    viewModel.onPixelTapped(row, col)
-                                }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = { offset ->
+                                        getCellAtOffset(offset)?.let { (row, col) ->
+                                            viewModel.onPixelTapped(row, col)
+                                        }
+                                    }
+                                )
+                            }
+                            .pointerInput(Unit) {
+                                val coloredCells = mutableSetOf<Pair<Int, Int>>()
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { offset ->
+                                        gestureMode = GestureMode.COLORING
+                                        getCellAtOffset(offset)?.let { (row, col) ->
+                                            viewModel.onPixelTapped(row, col)
+                                            coloredCells.add(row to col)
+                                        }
+                                    },
+                                    onDrag = { change, _ ->
+                                        change.consume()
+                                        getCellAtOffset(change.position)?.let { (row, col) ->
+                                            if (row to col !in coloredCells) {
+                                                viewModel.onPixelTapped(row, col)
+                                                coloredCells.add(row to col)
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        gestureMode = GestureMode.IDLE
+                                        coloredCells.clear()
+                                    },
+                                    onDragCancel = {
+                                        gestureMode = GestureMode.IDLE
+                                        coloredCells.clear()
+                                    }
+                                )
                             }
                             .transformable(state = transformableState)
                     ) {
