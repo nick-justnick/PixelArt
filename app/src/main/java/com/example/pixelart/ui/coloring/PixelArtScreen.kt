@@ -5,7 +5,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -53,6 +54,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -188,6 +191,8 @@ fun PixelArtScreen(
         }
     }
 
+    var colorFlag by remember { mutableStateOf(false) }
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -207,41 +212,58 @@ fun PixelArtScreen(
                             .fillMaxSize()
                             .onSizeChanged { viewportSize = it }
                             .clip(RectangleShape)
+                            .pointerInput(uiState.selectedColorIndex, colorFlag) {
+                                val coloredCells = mutableSetOf<Pair<Int, Int>>()
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val initialCell = getCellAtOffset(down.position)
+
+                                    if (initialCell != null) {
+                                        val (row, col) = initialCell
+                                        if (
+                                            grid[row][col].colorIndex == uiState.selectedColorIndex
+                                            && !grid[row][col].isColored
+                                        ) {
+                                            gestureMode = GestureMode.COLORING
+                                            coloredCells.clear()
+
+                                            viewModel.onPixelTapped(row, col)
+                                            coloredCells.add(row to col)
+                                            down.consume()
+                                        }
+
+                                        if (gestureMode == GestureMode.COLORING) {
+                                            var pointer = down
+                                            while (pointer.pressed) {
+                                                val event = awaitPointerEvent()
+                                                pointer =
+                                                    event.changes.firstOrNull { it.id == down.id }
+                                                        ?: break
+
+                                                if (pointer.pressed && pointer.positionChanged()) {
+                                                    getCellAtOffset(pointer.position)?.let { (row, col) ->
+                                                        if (row to col !in coloredCells) {
+                                                            viewModel.onPixelTapped(row, col)
+                                                            coloredCells.add(row to col)
+                                                        }
+                                                    }
+                                                    if (pointer.positionChange() != Offset.Zero)
+                                                        pointer.consume()
+                                                }
+                                            }
+                                            gestureMode = GestureMode.IDLE
+                                            coloredCells.clear()
+                                            colorFlag = !colorFlag
+                                        }
+                                    }
+                                }
+                            }
                             .pointerInput(Unit) {
                                 detectTapGestures(
                                     onTap = { offset ->
                                         getCellAtOffset(offset)?.let { (row, col) ->
                                             viewModel.onPixelTapped(row, col)
                                         }
-                                    }
-                                )
-                            }
-                            .pointerInput(Unit) {
-                                val coloredCells = mutableSetOf<Pair<Int, Int>>()
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { offset ->
-                                        gestureMode = GestureMode.COLORING
-                                        getCellAtOffset(offset)?.let { (row, col) ->
-                                            viewModel.onPixelTapped(row, col)
-                                            coloredCells.add(row to col)
-                                        }
-                                    },
-                                    onDrag = { change, _ ->
-                                        change.consume()
-                                        getCellAtOffset(change.position)?.let { (row, col) ->
-                                            if (row to col !in coloredCells) {
-                                                viewModel.onPixelTapped(row, col)
-                                                coloredCells.add(row to col)
-                                            }
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        gestureMode = GestureMode.IDLE
-                                        coloredCells.clear()
-                                    },
-                                    onDragCancel = {
-                                        gestureMode = GestureMode.IDLE
-                                        coloredCells.clear()
                                     }
                                 )
                             }
