@@ -8,6 +8,8 @@ import com.example.pixelart.data.model.Pixel
 import com.example.pixelart.data.model.ProgressInfo
 import com.example.pixelart.data.model.ProgressState
 import com.example.pixelart.data.repository.ArtProjectRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -20,6 +22,9 @@ class PixelArtViewModel(
 
     private val _uiState = MutableStateFlow(PixelArtUiState())
     val uiState = _uiState.asStateFlow()
+
+    private var isDirty = false
+    private var autoSaveJob: Job? = null
 
     init {
         if (projectId != -1L)
@@ -50,7 +55,7 @@ class PixelArtViewModel(
     }
 
     fun saveProgress() {
-        if (projectId == -1L || _uiState.value.grid.isEmpty()) return
+        if (!isDirty || projectId == -1L || _uiState.value.grid.isEmpty()) return
 
         viewModelScope.launch {
             val currentProjectState = ArtProject(
@@ -60,6 +65,7 @@ class PixelArtViewModel(
                 thumbnail = null
             )
             repository.updateProject(currentProjectState)
+            isDirty = false
         }
     }
 
@@ -71,11 +77,12 @@ class PixelArtViewModel(
         if (row !in grid.indices || col !in grid.first().indices) return
 
         val pixel = grid[row][col]
-        val cellKey = row to col
-
         if (pixel.isColored) return
 
-        if (pixel.colorIndex == currentState.selectedColorIndex) {
+        val isCorrectColor = pixel.colorIndex == currentState.selectedColorIndex
+        val cellKey = row to col
+
+        if (isCorrectColor) {
             updateProgressAndGrid(pixel, row, col)
             if (cellKey in currentState.wronglyColoredPixels) {
                 _uiState.update {
@@ -84,9 +91,13 @@ class PixelArtViewModel(
             }
         } else {
             _uiState.update {
-                it.copy(wronglyColoredPixels =
-                    it.wronglyColoredPixels + (cellKey to it.selectedColorIndex))
+                it.copy(
+                    wronglyColoredPixels =
+                        it.wronglyColoredPixels + (cellKey to it.selectedColorIndex)
+                )
             }
+            isDirty = true
+            triggerAutoSave()
         }
     }
 
@@ -126,6 +137,16 @@ class PixelArtViewModel(
                 progressInfo = newInfo,
                 selectedColorIndex = if (isColorDone) -1 else state.selectedColorIndex
             )
+        }
+        isDirty = true
+        triggerAutoSave()
+    }
+
+    private fun triggerAutoSave() {
+        autoSaveJob?.cancel()
+        autoSaveJob = viewModelScope.launch {
+            delay(3000L)
+            saveProgress()
         }
     }
 
