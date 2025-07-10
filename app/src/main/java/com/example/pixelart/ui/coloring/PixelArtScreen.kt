@@ -150,11 +150,10 @@ fun PixelArtScreen(
         val transformedOffset = (centeredTap - transformState.offset) / transformState.scale
         val originalTap = transformedOffset + Offset(gridRenderWidth / 2f, gridRenderHeight / 2f)
 
-        val cellWidth = gridRenderWidth / cols
-        val cellHeight = gridRenderHeight / rows
+        val cellSize = gridRenderWidth / cols
 
-        val col = (originalTap.x / cellWidth).toInt()
-        val row = (originalTap.y / cellHeight).toInt()
+        val col = (originalTap.x / cellSize).toInt()
+        val row = (originalTap.y / cellSize).toInt()
         return if (col in 0 until cols && row in 0 until rows) Pair(row, col) else null
     }
 
@@ -347,76 +346,49 @@ fun PixelArtGrid(
 
     var mainBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var highlightBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-    var layoutSize by remember { mutableStateOf(IntSize.Zero) }
     val textMeasurer = rememberTextMeasurer()
 
-    LaunchedEffect(grid, layoutSize) {
-        if (layoutSize == IntSize.Zero) return@LaunchedEffect
-        val bitmap = createBitmap(layoutSize.width, layoutSize.height)
+    LaunchedEffect(grid) {
+        if (cols == 0 || rows == 0) return@LaunchedEffect
+        val bitmap = createBitmap(cols, rows)
         val canvas = android.graphics.Canvas(bitmap)
-        val paint = Paint()
-        val cellWidth = layoutSize.width.toFloat() / cols
-        val cellHeight = layoutSize.height.toFloat() / rows
+        val paint = Paint().apply { isAntiAlias = false }
 
         grid.forEachIndexed { row, pixelRow ->
             pixelRow.forEachIndexed { col, pixel ->
                 if (pixel.isColored) {
                     paint.color = palette[pixel.colorIndex].toArgb()
-                    canvas.drawRect(
-                        col * cellWidth,
-                        row * cellHeight,
-                        (col + 1) * cellWidth,
-                        (row + 1) * cellHeight,
-                        paint
-                    )
+                    canvas.drawPoint(col.toFloat(), row.toFloat(), paint)
                 }
             }
         }
         mainBitmap = bitmap.asImageBitmap()
     }
 
-    LaunchedEffect(wronglyColoredPixels, selectedColorIndex, layoutSize) {
-        if (layoutSize == IntSize.Zero) return@LaunchedEffect
-        val bitmap = createBitmap(layoutSize.width, layoutSize.height)
+    LaunchedEffect(wronglyColoredPixels, selectedColorIndex) {
+        if (cols == 0 || rows == 0) return@LaunchedEffect
+        val bitmap = createBitmap(cols, rows)
         val canvas = android.graphics.Canvas(bitmap)
-        val paint = Paint()
-        val cellWidth = layoutSize.width.toFloat() / cols
-        val cellHeight = layoutSize.height.toFloat() / rows
+        val paint = Paint().apply { isAntiAlias = false }
 
         if (selectedColorIndex != -1) {
             paint.color = Color.Gray.copy(alpha = 0.4f).toArgb()
             grid.forEachIndexed { row, pixelRow ->
                 pixelRow.forEachIndexed { col, pixel ->
                     if (!pixel.isColored && pixel.colorIndex == selectedColorIndex) {
-                        canvas.drawRect(
-                            col * cellWidth,
-                            row * cellHeight,
-                            (col + 1) * cellWidth,
-                            (row + 1) * cellHeight,
-                            paint
-                        )
+                        canvas.drawPoint(col.toFloat(), row.toFloat(), paint)
                     }
                 }
             }
         }
         wronglyColoredPixels.forEach { (pos, colorIndex) ->
             paint.color = palette[colorIndex].copy(alpha = 0.5f).toArgb()
-            canvas.drawRect(
-                pos.second * cellWidth,
-                pos.first * cellHeight,
-                (pos.second + 1) * cellWidth,
-                (pos.first + 1) * cellHeight,
-                paint
-            )
+            canvas.drawPoint(pos.second.toFloat(), pos.first.toFloat(), paint)
         }
         highlightBitmap = bitmap.asImageBitmap()
     }
 
-    Box(
-        modifier = modifier
-            .aspectRatio(aspectRatio)
-            .onSizeChanged { layoutSize = it }
-    ) {
+    Box(modifier = modifier.aspectRatio(aspectRatio)) {
         Canvas(
             modifier = modifier
                 .fillMaxSize()
@@ -429,16 +401,23 @@ fun PixelArtGrid(
         ) {
             val scale = transformState.scale
             val offset = transformState.offset
-            val cellWidth = size.width / cols
-            val cellHeight = size.height / rows
+            val cellSize = size.width / cols
 
             drawRect(Color.White, size = size)
 
-            highlightBitmap?.let { drawImage(it, filterQuality = FilterQuality.None) }
+            val destinationSize = IntSize(size.width.toInt(), size.height.toInt())
+
+            highlightBitmap?.let {
+                drawImage(
+                    image = it,
+                    dstSize = destinationSize,
+                    filterQuality = FilterQuality.None
+                )
+            }
 
             val strokeWidth = 1.dp.toPx() / scale
             for (i in 0..cols) {
-                val x = i * cellWidth
+                val x = i * cellSize
                 drawLine(
                     Color.LightGray,
                     start = Offset(x, 0f),
@@ -447,7 +426,7 @@ fun PixelArtGrid(
                 )
             }
             for (i in 0..rows) {
-                val y = i * cellHeight
+                val y = i * cellSize
                 drawLine(
                     Color.LightGray,
                     start = Offset(0f, y),
@@ -456,10 +435,16 @@ fun PixelArtGrid(
                 )
             }
 
-            mainBitmap?.let { drawImage(it, filterQuality = FilterQuality.None) }
+            mainBitmap?.let {
+                drawImage(
+                    image = it,
+                    dstSize = destinationSize,
+                    filterQuality = FilterQuality.None
+                )
+            }
 
-            val onScreenCellWidth = cellWidth * scale
-            if (onScreenCellWidth > 10.dp.toPx()) {
+            val onScreenCellSize = cellSize * scale
+            if (onScreenCellSize > 10.dp.toPx()) {
                 fun screenToGridCoordinates(screenOffset: Offset): Offset {
                     val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
                     val gridRenderWidth = gridRenderSize.width
@@ -481,17 +466,17 @@ fun PixelArtGrid(
 
                 val buffer = 2
                 val firstVisibleRow =
-                    ((topLeftOnGrid.y / cellHeight) - buffer).toInt().coerceIn(0, rows - 1)
+                    ((topLeftOnGrid.y / cellSize) - buffer).toInt().coerceIn(0, rows - 1)
                 val lastVisibleRow =
-                    ((bottomRightOnGrid.y / cellHeight) + buffer).toInt().coerceIn(0, rows - 1)
+                    ((bottomRightOnGrid.y / cellSize) + buffer).toInt().coerceIn(0, rows - 1)
                 val firstVisibleCol =
-                    ((topLeftOnGrid.x / cellWidth) - buffer).toInt().coerceIn(0, cols - 1)
+                    ((topLeftOnGrid.x / cellSize) - buffer).toInt().coerceIn(0, cols - 1)
                 val lastVisibleCol =
-                    ((bottomRightOnGrid.x / cellWidth) + buffer).toInt().coerceIn(0, cols - 1)
+                    ((bottomRightOnGrid.x / cellSize) + buffer).toInt().coerceIn(0, cols - 1)
 
                 val textStyle = TextStyle(
                     color = Color.DarkGray,
-                    fontSize = (minOf(cellWidth, cellHeight) / 2).toSp()
+                    fontSize = (cellSize / 2).toSp()
                 )
 
                 for (row in firstVisibleRow..lastVisibleRow) {
@@ -505,8 +490,8 @@ fun PixelArtGrid(
                             drawText(
                                 textLayoutResult = textLayoutResult,
                                 topLeft = Offset(
-                                    x = (col * cellWidth) + (cellWidth - textLayoutResult.size.width) / 2,
-                                    y = (row * cellHeight) + (cellHeight - textLayoutResult.size.height) / 2
+                                    x = (col * cellSize) + (cellSize - textLayoutResult.size.width) / 2,
+                                    y = (row * cellSize) + (cellSize - textLayoutResult.size.height) / 2
                                 )
                             )
                         }
