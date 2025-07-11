@@ -19,8 +19,6 @@ import java.io.ByteArrayOutputStream
 
 class ArtProjectRepository(private val artProjectDao: ArtProjectDao) {
 
-    private val thumbnailWidth = 200
-
     fun getAllProjects() = artProjectDao.getAllProjects()
 
     suspend fun getProjectById(id: Long) = artProjectDao.getProjectById(id)
@@ -53,14 +51,9 @@ class ArtProjectRepository(private val artProjectDao: ArtProjectDao) {
         val rows = grid.size
         val cols = grid.first().size
 
-        val thumbWidth = thumbnailWidth
-        val thumbHeight = (thumbWidth * (rows.toFloat() / cols)).toInt()
-        val bitmap = createBitmap(thumbWidth, thumbHeight)
+        val bitmap = createBitmap(cols, rows)
         val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-        val cellWidth = thumbWidth.toFloat() / cols
-        val cellHeight = thumbHeight.toFloat() / rows
+        val paint = Paint().apply { isAntiAlias = false }
 
         for (row in 0 until rows) {
             for (col in 0 until cols) {
@@ -73,13 +66,7 @@ class ArtProjectRepository(private val artProjectDao: ArtProjectDao) {
                     val gray = color.luminance()
                     Color(gray, gray, gray).toArgb()
                 }
-                canvas.drawRect(
-                    col * cellWidth,
-                    row * cellHeight,
-                    (col + 1) * cellWidth,
-                    (row + 1) * cellHeight,
-                    paint
-                )
+                canvas.drawPoint(col.toFloat(), row.toFloat(), paint)
             }
         }
 

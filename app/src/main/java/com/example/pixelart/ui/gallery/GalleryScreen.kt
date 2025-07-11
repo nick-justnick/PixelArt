@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -152,7 +153,8 @@ fun ProjectThumbnail(project: ArtProject, modifier: Modifier = Modifier, onClick
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = stringResource(R.string.project_thumbnail),
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                filterQuality = FilterQuality.None
             )
         }
     }
