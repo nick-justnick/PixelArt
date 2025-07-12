@@ -1,5 +1,6 @@
 package com.example.pixelart.ui.coloring
 
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -15,9 +16,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+data class PixelArtUiState(
+    val grid: List<List<Pixel>> = emptyList(),
+    val palette: List<Color> = emptyList(),
+    val selectedColorIndex: Int = -1,
+    val isLoading: Boolean = false,
+    val progress: ProgressState = ProgressState(),
+    internal val progressInfo: ProgressInfo = ProgressInfo(),
+    val wronglyColoredPixels: Map<Pair<Int, Int>, Int> = emptyMap(),
+    val isComplete: Boolean = false
+)
+
 class PixelArtViewModel(
-    private val repository: ArtProjectRepository,
-    private val projectId: Long
+    private val repository: ArtProjectRepository, private val projectId: Long
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PixelArtUiState())
@@ -27,8 +38,7 @@ class PixelArtViewModel(
     private var autoSaveJob: Job? = null
 
     init {
-        if (projectId != -1L)
-            loadProject()
+        if (projectId != -1L) loadProject()
     }
 
     private fun loadProject() {
@@ -37,8 +47,7 @@ class PixelArtViewModel(
             val project = repository.getProjectById(projectId)
             if (project != null) {
                 val (info, state) = calculateInitialProgress(
-                    project.gridState,
-                    project.palette.size
+                    project.gridState, project.palette.size
                 )
                 _uiState.update {
                     it.copy(
@@ -47,7 +56,8 @@ class PixelArtViewModel(
                         palette = project.palette,
                         progress = state,
                         progressInfo = info,
-                        selectedColorIndex = -1
+                        selectedColorIndex = -1,
+                        isComplete = state.globalProgress == 1f
                     )
                 }
             }
@@ -92,8 +102,7 @@ class PixelArtViewModel(
         } else {
             _uiState.update {
                 it.copy(
-                    wronglyColoredPixels =
-                        it.wronglyColoredPixels + (cellKey to it.selectedColorIndex)
+                    wronglyColoredPixels = it.wronglyColoredPixels + (cellKey to it.selectedColorIndex)
                 )
             }
             isDirty = true
@@ -120,26 +129,30 @@ class PixelArtViewModel(
         val newPerColorProgress =
             newInfo.perColorColored[colorIndex].toFloat() / newInfo.perColorTotal[colorIndex]
         val isColorDone = newPerColorProgress >= 1.0f
+        val isArtworkComplete = newGlobalProgress >= 1.0f
 
         _uiState.update { state ->
             state.copy(
                 grid = state.grid.toMutableList().apply {
-                    this[row] = state.grid[row].toMutableList().apply {
-                        this[col] = pixel.copy(isColored = true)
-                    }.toList()
-                }.toList(),
+                this[row] = state.grid[row].toMutableList().apply {
+                    this[col] = pixel.copy(isColored = true)
+                }.toList()
+            }.toList(),
                 progress = state.progress.copy(
                     globalProgress = newGlobalProgress,
                     perColorProgress = state.progress.perColorProgress.toMutableList().apply {
                         this[colorIndex] = newPerColorProgress
-                    }
-                ),
+                    }),
                 progressInfo = newInfo,
-                selectedColorIndex = if (isColorDone) -1 else state.selectedColorIndex
-            )
+                selectedColorIndex = if (isColorDone) -1 else state.selectedColorIndex,
+                isComplete = isArtworkComplete)
         }
-        isDirty = true
-        triggerAutoSave()
+        if (!isArtworkComplete) {
+            isDirty = true
+            triggerAutoSave()
+        } else {
+            saveProgress()
+        }
     }
 
     private fun triggerAutoSave() {
@@ -155,8 +168,7 @@ class PixelArtViewModel(
     }
 
     private fun calculateInitialProgress(
-        grid: List<List<Pixel>>,
-        paletteSize: Int
+        grid: List<List<Pixel>>, paletteSize: Int
     ): Pair<ProgressInfo, ProgressState> {
         if (grid.isEmpty() || paletteSize == 0) return Pair(ProgressInfo(), ProgressState())
 
@@ -184,20 +196,17 @@ class PixelArtViewModel(
             globalProgress = if (totalPixels > 0) totalColored.toFloat() / totalPixels else 0f,
             perColorProgress = List(paletteSize) { i ->
                 if (perColorTotal[i] == 0) 1.0f else perColorColored[i].toFloat() / perColorTotal[i]
-            }
-        )
+            })
         return Pair(info, state)
     }
 }
 
 class PixelArtViewModelFactory(
-    private val repository: ArtProjectRepository,
-    private val projectId: Long
+    private val repository: ArtProjectRepository, private val projectId: Long
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(PixelArtViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return PixelArtViewModel(repository, projectId) as T
+            @Suppress("UNCHECKED_CAST") return PixelArtViewModel(repository, projectId) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

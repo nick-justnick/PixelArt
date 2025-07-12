@@ -1,6 +1,10 @@
 package com.example.pixelart.ui.coloring
 
+import android.content.Intent
 import android.graphics.Paint
+import android.widget.Toast
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +32,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -53,12 +61,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -71,12 +81,16 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import com.example.pixelart.PixelArtApplication
 import com.example.pixelart.R
 import com.example.pixelart.data.model.Pixel
 import com.example.pixelart.data.model.ProgressState
 import com.example.pixelart.data.repository.ArtProjectRepository
+import com.example.pixelart.domain.processing.ImageExporter
+import kotlinx.coroutines.launch
 
 private fun calculateGridRenderSize(
     gridCols: Int,
@@ -103,6 +117,7 @@ enum class GestureMode {
 
 @Composable
 fun PixelArtScreen(
+    navController: NavController,
     projectId: Long,
     modifier: Modifier = Modifier
 ) {
@@ -117,6 +132,17 @@ fun PixelArtScreen(
         viewModel(factory = PixelArtViewModelFactory(repository, projectId))
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    var transformState by remember { mutableStateOf(TransformState()) }
+    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
+    var gestureMode by remember { mutableStateOf(GestureMode.IDLE) }
+
+    val animatedScale = remember { Animatable(1f) }
+    val animatedOffsetX = remember { Animatable(0f) }
+    val animatedOffsetY = remember { Animatable(0f) }
+    val bottomUiAlpha by animateFloatAsState(
+        targetValue = if (uiState.isComplete) 0f else 1f, label = "Bottom UI Alpha"
+    )
+
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -129,32 +155,27 @@ fun PixelArtScreen(
         }
     }
 
-    var transformState by remember { mutableStateOf(TransformState()) }
-    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
-    var gestureMode by remember { mutableStateOf(GestureMode.IDLE) }
+    LaunchedEffect(uiState.isComplete) {
+        if (uiState.isComplete) {
+            launch { animatedScale.animateTo(1f) }
+            launch { animatedOffsetX.animateTo(0f) }
+            launch { animatedOffsetY.animateTo(0f) }
+        } else {
+            animatedScale.snapTo(transformState.scale)
+            animatedOffsetX.snapTo(transformState.offset.x)
+            animatedOffsetY.snapTo(transformState.offset.y)
+        }
+    }
 
     val grid = uiState.grid
     val rows = grid.size
-    if (rows == 0) return
-    val cols = grid.first().size
-    if (cols == 0) return
+    val cols = grid.firstOrNull()?.size ?: 0
 
-    fun getCellAtOffset(tapOffset: Offset): Pair<Int, Int>? {
-        if (rows == 0 || cols == 0 || viewportSize == IntSize.Zero) return null
-
-        val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
-        val gridRenderWidth = gridRenderSize.width
-        val gridRenderHeight = gridRenderSize.height
-
-        val centeredTap = tapOffset - Offset(viewportSize.width / 2f, viewportSize.height / 2f)
-        val transformedOffset = (centeredTap - transformState.offset) / transformState.scale
-        val originalTap = transformedOffset + Offset(gridRenderWidth / 2f, gridRenderHeight / 2f)
-
-        val cellSize = gridRenderWidth / cols
-
-        val col = (originalTap.x / cellSize).toInt()
-        val row = (originalTap.y / cellSize).toInt()
-        return if (col in 0 until cols && row in 0 until rows) Pair(row, col) else null
+    if (uiState.isComplete) {
+        transformState = TransformState(
+            animatedScale.value,
+            Offset(animatedOffsetX.value, animatedOffsetY.value)
+        )
     }
 
     val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
@@ -190,6 +211,24 @@ fun PixelArtScreen(
         }
     }
 
+    fun getCellAtOffset(tapOffset: Offset): Pair<Int, Int>? {
+        if (rows == 0 || cols == 0 || viewportSize == IntSize.Zero) return null
+
+        val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
+        val gridRenderWidth = gridRenderSize.width
+        val gridRenderHeight = gridRenderSize.height
+
+        val centeredTap = tapOffset - Offset(viewportSize.width / 2f, viewportSize.height / 2f)
+        val transformedOffset = (centeredTap - transformState.offset) / transformState.scale
+        val originalTap = transformedOffset + Offset(gridRenderWidth / 2f, gridRenderHeight / 2f)
+
+        val cellSize = gridRenderWidth / cols
+
+        val col = (originalTap.x / cellSize).toInt()
+        val row = (originalTap.y / cellSize).toInt()
+        return if (col in 0 until cols && row in 0 until rows) Pair(row, col) else null
+    }
+
     var colorFlag by remember { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -211,62 +250,70 @@ fun PixelArtScreen(
                             .fillMaxSize()
                             .onSizeChanged { viewportSize = it }
                             .clip(RectangleShape)
-                            .pointerInput(uiState.selectedColorIndex, colorFlag) {
-                                val coloredCells = mutableSetOf<Pair<Int, Int>>()
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                    val initialCell = getCellAtOffset(down.position)
+                            .then(
+                                if (!uiState.isComplete) {
+                                    Modifier
+                                        .pointerInput(uiState.selectedColorIndex, colorFlag) {
+                                            val coloredCells = mutableSetOf<Pair<Int, Int>>()
+                                            awaitEachGesture {
+                                                val down = awaitFirstDown(requireUnconsumed = false)
+                                                val initialCell = getCellAtOffset(down.position)
 
-                                    if (initialCell != null) {
-                                        val (row, col) = initialCell
-                                        if (
-                                            grid[row][col].colorIndex == uiState.selectedColorIndex
-                                            && !grid[row][col].isColored
-                                        ) {
-                                            gestureMode = GestureMode.COLORING
-                                            coloredCells.clear()
+                                                if (initialCell != null) {
+                                                    val (row, col) = initialCell
+                                                    if (
+                                                        grid[row][col].colorIndex == uiState.selectedColorIndex
+                                                        && !grid[row][col].isColored
+                                                    ) {
+                                                        gestureMode = GestureMode.COLORING
+                                                        coloredCells.clear()
 
-                                            viewModel.onPixelTapped(row, col)
-                                            coloredCells.add(row to col)
-                                            down.consume()
-                                        }
-
-                                        if (gestureMode == GestureMode.COLORING) {
-                                            var pointer = down
-                                            while (pointer.pressed) {
-                                                val event = awaitPointerEvent()
-                                                pointer =
-                                                    event.changes.firstOrNull { it.id == down.id }
-                                                        ?: break
-
-                                                if (pointer.pressed && pointer.positionChanged()) {
-                                                    getCellAtOffset(pointer.position)?.let { (row, col) ->
-                                                        if (row to col !in coloredCells) {
-                                                            viewModel.onPixelTapped(row, col)
-                                                            coloredCells.add(row to col)
-                                                        }
+                                                        viewModel.onPixelTapped(row, col)
+                                                        coloredCells.add(row to col)
+                                                        down.consume()
                                                     }
-                                                    if (pointer.positionChange() != Offset.Zero)
-                                                        pointer.consume()
+
+                                                    if (gestureMode == GestureMode.COLORING) {
+                                                        var pointer = down
+                                                        while (pointer.pressed) {
+                                                            val event = awaitPointerEvent()
+                                                            pointer =
+                                                                event.changes.firstOrNull { it.id == down.id }
+                                                                    ?: break
+
+                                                            if (pointer.pressed && pointer.positionChanged()) {
+                                                                getCellAtOffset(pointer.position)?.let { (row, col) ->
+                                                                    if (row to col !in coloredCells) {
+                                                                        viewModel.onPixelTapped(
+                                                                            row,
+                                                                            col
+                                                                        )
+                                                                        coloredCells.add(row to col)
+                                                                    }
+                                                                }
+                                                                if (pointer.positionChange() != Offset.Zero)
+                                                                    pointer.consume()
+                                                            }
+                                                        }
+                                                        gestureMode = GestureMode.IDLE
+                                                        coloredCells.clear()
+                                                        colorFlag = !colorFlag
+                                                    }
                                                 }
                                             }
-                                            gestureMode = GestureMode.IDLE
-                                            coloredCells.clear()
-                                            colorFlag = !colorFlag
                                         }
-                                    }
-                                }
-                            }
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap = { offset ->
-                                        getCellAtOffset(offset)?.let { (row, col) ->
-                                            viewModel.onPixelTapped(row, col)
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onTap = { offset ->
+                                                    getCellAtOffset(offset)?.let { (row, col) ->
+                                                        viewModel.onPixelTapped(row, col)
+                                                    }
+                                                }
+                                            )
                                         }
-                                    }
-                                )
-                            }
-                            .transformable(state = transformableState)
+                                        .transformable(state = transformableState)
+                                } else Modifier)
+
                     ) {
                         PixelArtGrid(
                             grid = uiState.grid,
@@ -275,28 +322,63 @@ fun PixelArtScreen(
                             wronglyColoredPixels = uiState.wronglyColoredPixels,
                             transformState = transformState,
                             viewportSize = viewportSize,
+                            isComplete = uiState.isComplete,
                             modifier = Modifier.align(Alignment.Center)
                         )
                     }
-                    GlobalProgressIndicator(
-                        progress = uiState.progress.globalProgress,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                    )
+                    if (!uiState.isComplete) {
+                        GlobalProgressIndicator(
+                            progress = uiState.progress.globalProgress,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                        )
+                    }
                 }
-                ColorPalette(
-                    palette = uiState.palette,
-                    selectedColorIndex = uiState.selectedColorIndex,
-                    progress = uiState.progress,
-                    onColorSelected = viewModel::selectColor,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp)
-                )
+                Box(modifier = Modifier.graphicsLayer { alpha = bottomUiAlpha }) {
+                    if (bottomUiAlpha > 0.01f) {
+                        ColorPalette(
+                            palette = uiState.palette,
+                            selectedColorIndex = uiState.selectedColorIndex,
+                            progress = uiState.progress,
+                            onColorSelected = viewModel::selectColor,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp)
+                        )
+                    }
+                }
             }
         }
-
+        if (uiState.isComplete) {
+            CompletionButtons(
+                onDone = { navController.popBackStack() },
+                onSave = {
+                    viewModel.viewModelScope.launch {
+                        val success =
+                            ImageExporter.saveToDevice(context, uiState.grid, uiState.palette)
+                        Toast.makeText(
+                            context,
+                            if (success) "Saved to gallery!" else "Save failed.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                onShare = {
+                    viewModel.viewModelScope.launch {
+                        ImageExporter.getShareableUri(context, uiState.grid, uiState.palette)
+                            ?.let { uri ->
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "image/png"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Share Artwork"))
+                            }
+                    }
+                }
+            )
+        }
         if (uiState.isLoading) {
             Box(
                 modifier = Modifier
@@ -338,6 +420,7 @@ fun PixelArtGrid(
     wronglyColoredPixels: Map<Pair<Int, Int>, Int>,
     transformState: TransformState,
     viewportSize: IntSize,
+    isComplete: Boolean,
     modifier: Modifier = Modifier
 ) {
     val rows = grid.size
@@ -415,24 +498,26 @@ fun PixelArtGrid(
                 )
             }
 
-            val strokeWidth = 1.dp.toPx() / scale
-            for (i in 0..cols) {
-                val x = i * cellSize
-                drawLine(
-                    Color.LightGray,
-                    start = Offset(x, 0f),
-                    end = Offset(x, size.height),
-                    strokeWidth = strokeWidth
-                )
-            }
-            for (i in 0..rows) {
-                val y = i * cellSize
-                drawLine(
-                    Color.LightGray,
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = strokeWidth
-                )
+            if (!isComplete) {
+                val strokeWidth = 1.dp.toPx() / scale
+                for (i in 0..cols) {
+                    val x = i * cellSize
+                    drawLine(
+                        Color.LightGray,
+                        start = Offset(x, 0f),
+                        end = Offset(x, size.height),
+                        strokeWidth = strokeWidth
+                    )
+                }
+                for (i in 0..rows) {
+                    val y = i * cellSize
+                    drawLine(
+                        Color.LightGray,
+                        start = Offset(0f, y),
+                        end = Offset(size.width, y),
+                        strokeWidth = strokeWidth
+                    )
+                }
             }
 
             mainBitmap?.let {
@@ -444,7 +529,7 @@ fun PixelArtGrid(
             }
 
             val onScreenCellSize = cellSize * scale
-            if (onScreenCellSize > 10.dp.toPx()) {
+            if (!isComplete && onScreenCellSize > 10.dp.toPx()) {
                 fun screenToGridCoordinates(screenOffset: Offset): Offset {
                     val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
                     val gridRenderWidth = gridRenderSize.width
@@ -571,6 +656,43 @@ fun ColorPalette(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun CompletionButtons(
+    onDone: () -> Unit,
+    onSave: () -> Unit,
+    onShare: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 32.dp, start = 16.dp, end = 16.dp)
+            .safeDrawingPadding(),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(onClick = onSave) {
+                Icon(ImageVector.vectorResource(R.drawable.save), "Save")
+                Spacer(Modifier.width(8.dp))
+                Text("Save")
+            }
+            Button(onClick = onShare) {
+                Icon(Icons.Default.Share, "Share")
+                Spacer(Modifier.width(8.dp))
+                Text("Share")
+            }
+            Button(onClick = onDone) {
+                Icon(Icons.Default.Done, "Done")
+                Spacer(Modifier.width(8.dp))
+                Text("Done")
             }
         }
     }
