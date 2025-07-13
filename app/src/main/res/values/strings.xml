@@ -5,4 +5,13 @@
     <string name="project_thumbnail">Project Thumbnail</string>
     <string name="done">Done</string>
     <string name="bottom_ui_alpha">Bottom UI Alpha</string>
+    <string name="reset_artwork">Reset Artwork?</string>
+    <string name="reset_confirm">This will erase all your coloring progress for this artwork. This action cannot be undone.</string>
+    <string name="delete_artwork">Delete Artwork?</string>
+    <string name="delete_confirm">Are you sure you want to permanently delete this artwork?</string>
+    <string name="project_options">Project Options</string>
+    <string name="reset_progress">Reset Progress</string>
+    <string name="do_delete_artwork">Delete Artwork</string>
+    <string name="cancel">Cancel</string>
+    <string name="confirm">Confirm</string>
 </resources>

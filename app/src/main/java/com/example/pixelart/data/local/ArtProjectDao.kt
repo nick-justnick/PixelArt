@@ -1,6 +1,7 @@
 package com.example.pixelart.data.local
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Query
 import androidx.room.Upsert
 import com.example.pixelart.data.model.ArtProject
@@ -16,4 +17,7 @@ interface ArtProjectDao {
 
     @Query("SELECT * FROM art_projects ORDER BY id DESC")
     fun getAllProjects(): Flow<List<ArtProject>>
+
+    @Delete
+    suspend fun deleteProject(project: ArtProject)
 }

@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.pixelart.data.model.ArtProject
 import com.example.pixelart.data.repository.ArtProjectRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -24,6 +25,18 @@ class GalleryViewModel(private val repository: ArtProjectRepository) : ViewModel
         viewModelScope.launch {
             val newId = repository.createNewProject(context, uri, width, colorCount)
             onComplete(newId)
+        }
+    }
+
+    fun deleteProject(project: ArtProject) {
+        viewModelScope.launch {
+            repository.deleteProject(project)
+        }
+    }
+
+    fun resetProject(project: ArtProject) {
+        viewModelScope.launch {
+            repository.resetProject(project)
         }
     }
 }

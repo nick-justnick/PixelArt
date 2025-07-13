@@ -44,6 +44,20 @@ class ArtProjectRepository(private val artProjectDao: ArtProjectDao) {
         artProjectDao.upsertProject(project.copy(thumbnail = updatedThumbnail))
     }
 
+    suspend fun deleteProject(project: ArtProject) {
+        artProjectDao.deleteProject(project)
+    }
+
+    suspend fun resetProject(project: ArtProject) {
+        val resetGrid = project.gridState.map { row ->
+            row.map { pixel ->
+                pixel.copy(isColored = false)
+            }
+        }
+        val updatedProject = project.copy(gridState = resetGrid)
+        updateProject(updatedProject)
+    }
+
     private suspend fun generateThumbnail(
         grid: List<List<Pixel>>,
         palette: List<Color>

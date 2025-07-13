@@ -6,7 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -68,6 +69,10 @@ fun GalleryScreen(navController: NavController) {
     var showSettingsDialog by remember { mutableStateOf(false) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
+    var projectForOptions by remember { mutableStateOf<ArtProject?>(null) }
+    var showResetConfirmation by remember { mutableStateOf<ArtProject?>(null) }
+    var showDeleteConfirmation by remember { mutableStateOf<ArtProject?>(null) }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
@@ -114,9 +119,11 @@ fun GalleryScreen(navController: NavController) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(projects) { project ->
-                    ProjectThumbnail(project = project) {
-                        navController.navigate("coloring/${project.id}")
-                    }
+                    ProjectThumbnail(
+                        project = project,
+                        onClick = { navController.navigate("coloring/${project.id}") },
+                        onLongClick = { projectForOptions = project }
+                    )
                 }
             }
         }
@@ -138,14 +145,57 @@ fun GalleryScreen(navController: NavController) {
             }
         )
     }
+
+    projectForOptions?.let { project ->
+        ProjectOptionMenu(
+            onDismiss = { projectForOptions = null },
+            onResetClick = {
+                projectForOptions = null
+                showResetConfirmation = project
+            },
+            onDeleteClick = {
+                projectForOptions = null
+                showDeleteConfirmation = project
+            }
+        )
+    }
+
+    showResetConfirmation?.let { project ->
+        ConfirmationDialog(
+            title = stringResource(R.string.reset_artwork),
+            text = stringResource(R.string.reset_confirm),
+            onConfirm = {
+                viewModel.resetProject(project)
+                showResetConfirmation = null
+            },
+            onDismiss = { showResetConfirmation = null }
+        )
+    }
+
+    showDeleteConfirmation?.let { project ->
+        ConfirmationDialog(
+            title = stringResource(R.string.delete_artwork),
+            text = stringResource(R.string.delete_confirm),
+            onConfirm = {
+                viewModel.deleteProject(project)
+                showDeleteConfirmation = null
+            },
+            onDismiss = { showDeleteConfirmation = null }
+        )
+    }
 }
 
 @Composable
-fun ProjectThumbnail(project: ArtProject, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun ProjectThumbnail(
+    project: ArtProject,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
     Card(
         modifier = modifier
             .aspectRatio(1f)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         project.thumbnail?.let {
             val bitmap = remember(it) { BitmapFactory.decodeByteArray(it, 0, it.size) }
@@ -158,6 +208,57 @@ fun ProjectThumbnail(project: ArtProject, modifier: Modifier = Modifier, onClick
             )
         }
     }
+}
+
+@Composable
+fun ProjectOptionMenu(
+    onDismiss: () -> Unit,
+    onResetClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.project_options)) },
+        text = {
+            Column {
+                TextButton(onClick = onResetClick, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.reset_progress))
+                }
+                TextButton(onClick = onDeleteClick, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.do_delete_artwork))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+fun ConfirmationDialog(
+    title: String,
+    text: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text(stringResource(R.string.confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 @Composable
