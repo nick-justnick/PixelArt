@@ -22,10 +22,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.example.pixelart.data.model.Pixel
 import com.example.pixelart.ui.coloring.composables.GlobalProgressIndicator
 import com.example.pixelart.ui.coloring.composables.PixelArtGrid
 import com.example.pixelart.ui.coloring.gestures.coloringGesture
 import kotlinx.coroutines.launch
+import kotlin.math.pow
 
 @Composable
 fun PixelArtCanvas(
@@ -63,24 +65,6 @@ fun PixelArtCanvas(
         )
     }
 
-    fun getCellAtOffset(tapOffset: Offset): Pair<Int, Int>? {
-        if (rows == 0 || cols == 0 || viewportSize == IntSize.Zero) return null
-
-        val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
-        val gridRenderWidth = gridRenderSize.width
-        val gridRenderHeight = gridRenderSize.height
-
-        val centeredTap = tapOffset - Offset(viewportSize.width / 2f, viewportSize.height / 2f)
-        val transformedOffset = (centeredTap - transformState.offset) / transformState.scale
-        val originalTap = transformedOffset + Offset(gridRenderWidth / 2f, gridRenderHeight / 2f)
-
-        val cellSize = gridRenderWidth / cols
-
-        val col = (originalTap.x / cellSize).toInt()
-        val row = (originalTap.y / cellSize).toInt()
-        return if (col in 0 until cols && row in 0 until rows) Pair(row, col) else null
-    }
-
     val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
         val newScale = (transformState.scale * zoomChange).coerceIn(1f, cols / 8f)
         val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
@@ -108,17 +92,26 @@ fun PixelArtCanvas(
             .clip(RectangleShape)
             .then(
                 if (!uiState.isComplete) {
+                    val getCell: (Offset) -> Pair<Int, Int>? = { offset ->
+                        getForgivingCellAtOffset(
+                            tapOffset = offset,
+                            transformState = transformState,
+                            viewportSize = viewportSize,
+                            grid = uiState.grid,
+                            selectedColorIndex = uiState.selectedColorIndex
+                        )
+                    }
                     Modifier
                         .coloringGesture(
                             grid = grid,
                             selectedColorIndex = uiState.selectedColorIndex,
-                            getCellAtOffset = ::getCellAtOffset,
+                            getCellAtOffset = getCell,
                             onPixelTapped = onPixelTapped
                         )
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = { offset ->
-                                    getCellAtOffset(offset)?.let { (row, col) ->
+                                    getCell(offset)?.let { (row, col) ->
                                         onPixelTapped(row, col)
                                     }
                                 }
@@ -145,6 +138,76 @@ fun PixelArtCanvas(
                     .align(Alignment.TopEnd)
                     .padding(8.dp)
             )
+        }
+    }
+}
+
+private fun getForgivingCellAtOffset(
+    tapOffset: Offset,
+    transformState: TransformState,
+    viewportSize: IntSize,
+    grid: List<List<Pixel>>,
+    selectedColorIndex: Int
+): Pair<Int, Int>? {
+    val rows = grid.size
+    if (rows == 0) return null
+    val cols = grid.first().size
+    if (cols == 0 || viewportSize == IntSize.Zero) return null
+
+    val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
+    val cellSize = gridRenderSize.width / cols
+
+    val centeredTap = tapOffset - Offset(viewportSize.width / 2f, viewportSize.height / 2f)
+    val transformedOffset = (centeredTap - transformState.offset) / transformState.scale
+    val originalTap =
+        transformedOffset + Offset(gridRenderSize.width / 2f, gridRenderSize.height / 2f)
+
+    val initialCol = (originalTap.x / cellSize).toInt()
+    val initialRow = (originalTap.y / cellSize).toInt()
+
+    if (initialRow !in 0 until rows || initialCol !in 0 until cols) return null
+
+    if (grid[initialRow][initialCol].colorIndex == selectedColorIndex)
+        return initialRow to initialCol
+
+    val tapInCellX = originalTap.x - initialCol * cellSize
+    val tapInCellY = originalTap.y - initialRow * cellSize
+    val forgiveness = cellSize * 0.15f
+
+    val isTop = tapInCellY < forgiveness
+    val isBottom = tapInCellY > cellSize - forgiveness
+    val isLeft = tapInCellX < forgiveness
+    val isRight = tapInCellX > cellSize - forgiveness
+
+    if (!isTop && !isBottom && !isLeft && !isRight)
+        return initialRow to initialCol
+
+    val neighbors = mutableListOf<Pair<Int, Int>>().apply {
+        if (isTop) add(initialRow - 1 to initialCol)
+        if (isBottom) add(initialRow + 1 to initialCol)
+        if (isLeft) add(initialRow to initialCol - 1)
+        if (isRight) add(initialRow to initialCol + 1)
+        if (isTop && isLeft) add(initialRow - 1 to initialCol - 1)
+        if (isTop && isRight) add(initialRow - 1 to initialCol + 1)
+        if (isBottom && isLeft) add(initialRow + 1 to initialCol - 1)
+        if (isBottom && isRight) add(initialRow + 1 to initialCol + 1)
+    }
+
+    val correctNeighbors = neighbors.filter { (r, c) ->
+        r in 0 until rows && c in 0 until cols && grid[r][c].colorIndex == selectedColorIndex
+    }
+
+    return when (correctNeighbors.size) {
+        0 -> initialRow to initialCol
+        1 -> correctNeighbors.first()
+        else -> {
+            correctNeighbors.minBy { (r, c) ->
+                val centerX = c * cellSize + cellSize / 2
+                val centerY = r * cellSize + cellSize / 2
+                val dx = originalTap.x - centerX
+                val dy = originalTap.y - centerY
+                dx.pow(2) + dy.pow(2)
+            }
         }
     }
 }
