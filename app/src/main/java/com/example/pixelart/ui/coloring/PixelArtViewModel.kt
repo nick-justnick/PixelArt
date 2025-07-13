@@ -11,10 +11,17 @@ import com.example.pixelart.data.model.ProgressState
 import com.example.pixelart.data.repository.ArtProjectRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+sealed class PixelArtEvent {
+    data object ColorCompleted : PixelArtEvent()
+    data object ArtworkCompleted : PixelArtEvent()
+}
 
 data class PixelArtUiState(
     val grid: List<List<Pixel>> = emptyList(),
@@ -33,6 +40,9 @@ class PixelArtViewModel(
 
     private val _uiState = MutableStateFlow(PixelArtUiState())
     val uiState = _uiState.asStateFlow()
+
+    private val _eventFlow = MutableSharedFlow<PixelArtEvent>()
+    val eventFlow = _eventFlow.asSharedFlow()
 
     private var isDirty = false
     private var autoSaveJob: Job? = null
@@ -131,13 +141,18 @@ class PixelArtViewModel(
         val isColorDone = newPerColorProgress >= 1.0f
         val isArtworkComplete = newGlobalProgress >= 1.0f
 
+        if (isArtworkComplete)
+            viewModelScope.launch { _eventFlow.emit(PixelArtEvent.ArtworkCompleted) }
+        else if (isColorDone)
+            viewModelScope.launch { _eventFlow.emit(PixelArtEvent.ColorCompleted) }
+
         _uiState.update { state ->
             state.copy(
                 grid = state.grid.toMutableList().apply {
-                this[row] = state.grid[row].toMutableList().apply {
-                    this[col] = pixel.copy(isColored = true)
-                }.toList()
-            }.toList(),
+                    this[row] = state.grid[row].toMutableList().apply {
+                        this[col] = pixel.copy(isColored = true)
+                    }.toList()
+                }.toList(),
                 progress = state.progress.copy(
                     globalProgress = newGlobalProgress,
                     perColorProgress = state.progress.perColorProgress.toMutableList().apply {
@@ -145,7 +160,8 @@ class PixelArtViewModel(
                     }),
                 progressInfo = newInfo,
                 selectedColorIndex = if (isColorDone) -1 else state.selectedColorIndex,
-                isComplete = isArtworkComplete)
+                isComplete = isArtworkComplete
+            )
         }
         if (!isArtworkComplete) {
             isDirty = true
