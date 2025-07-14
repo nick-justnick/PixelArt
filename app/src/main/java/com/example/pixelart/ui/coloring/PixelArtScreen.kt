@@ -37,8 +37,8 @@ import androidx.navigation.NavController
 import com.example.pixelart.PixelArtApplication
 import com.example.pixelart.data.repository.ArtProjectRepository
 import com.example.pixelart.domain.processing.ImageExporter
-import com.example.pixelart.ui.coloring.composables.ColorPalette
 import com.example.pixelart.ui.coloring.composables.CompletionButtons
+import com.example.pixelart.ui.coloring.composables.PagedColorPalette
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -118,7 +118,7 @@ fun PixelArtScreen(
 
                 Box(modifier = Modifier.graphicsLayer { alpha = bottomUiAlpha }) {
                     if (bottomUiAlpha > 0.01f) {
-                        ColorPalette(
+                        PagedColorPalette(
                             palette = uiState.palette,
                             selectedColorIndex = uiState.selectedColorIndex,
                             progress = uiState.progress,
