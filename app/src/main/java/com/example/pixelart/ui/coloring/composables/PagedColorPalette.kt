@@ -180,7 +180,7 @@ private fun ColorTile(
                             cap = StrokeCap.Round
                         )
                         drawLine(
-                            color = textColor,
+                            color = color,
                             start = Offset(0f, center.y),
                             end = Offset(size.width * progress, center.y),
                             strokeWidth = progressWidth,
