@@ -88,11 +88,11 @@ fun PixelArtScreen(
 
             val vibrationEffect = when (event) {
                 is PixelArtEvent.ColorCompleted -> {
-                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
+                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)
                 }
 
-                is PixelArtEvent.ArtworkCompleted -> {
-                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)
+                is PixelArtEvent.WrongColorTapped -> {
+                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
                 }
             }
             vibrator.vibrate(vibrationEffect)

@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 
 sealed class PixelArtEvent {
     data object ColorCompleted : PixelArtEvent()
-    data object ArtworkCompleted : PixelArtEvent()
+    data object WrongColorTapped : PixelArtEvent()
 }
 
 data class PixelArtUiState(
@@ -110,6 +110,9 @@ class PixelArtViewModel(
                 }
             }
         } else {
+            viewModelScope.launch {
+                _eventFlow.emit(PixelArtEvent.WrongColorTapped)
+            }
             _uiState.update {
                 it.copy(
                     wronglyColoredPixels = it.wronglyColoredPixels + (cellKey to it.selectedColorIndex)
@@ -141,9 +144,7 @@ class PixelArtViewModel(
         val isColorDone = newPerColorProgress >= 1.0f
         val isArtworkComplete = newGlobalProgress >= 1.0f
 
-        if (isArtworkComplete)
-            viewModelScope.launch { _eventFlow.emit(PixelArtEvent.ArtworkCompleted) }
-        else if (isColorDone)
+        if (isColorDone)
             viewModelScope.launch { _eventFlow.emit(PixelArtEvent.ColorCompleted) }
 
         _uiState.update { state ->
