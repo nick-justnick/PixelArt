@@ -36,7 +36,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -86,7 +88,9 @@ fun PixelArtGrid(
 
     var mainBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var highlightBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var grayscaleBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
 
     LaunchedEffect(grid) {
         if (cols == 0 || rows == 0) return@LaunchedEffect
@@ -105,6 +109,24 @@ fun PixelArtGrid(
         mainBitmap = bitmap.asImageBitmap()
     }
 
+    LaunchedEffect(Unit) {
+        if (cols == 0 || rows == 0) return@LaunchedEffect
+        val bitmap = createBitmap(cols, rows)
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = Paint().apply { isAntiAlias = false }
+
+        grid.forEachIndexed { row, pixelRow ->
+            pixelRow.forEachIndexed { col, pixel ->
+                val originalColor = palette[pixel.colorIndex]
+                val lightenedLuminance = (originalColor.luminance() * 0.4f) + 0.5f
+                val grayColor = Color(lightenedLuminance, lightenedLuminance, lightenedLuminance)
+                paint.color = grayColor.toArgb()
+                canvas.drawPoint(col.toFloat(), row.toFloat(), paint)
+            }
+        }
+        grayscaleBitmap = bitmap.asImageBitmap()
+    }
+
     LaunchedEffect(wronglyColoredPixels, selectedColorIndex) {
         if (cols == 0 || rows == 0) return@LaunchedEffect
         val bitmap = createBitmap(cols, rows)
@@ -112,7 +134,7 @@ fun PixelArtGrid(
         val paint = Paint().apply { isAntiAlias = false }
 
         if (selectedColorIndex != -1) {
-            paint.color = Color.Gray.copy(alpha = 0.4f).toArgb()
+            paint.color = Color.Gray.copy(alpha = 0.6f).toArgb()
             grid.forEachIndexed { row, pixelRow ->
                 pixelRow.forEachIndexed { col, pixel ->
                     if (!pixel.isColored && pixel.colorIndex == selectedColorIndex) {
@@ -140,12 +162,42 @@ fun PixelArtGrid(
                 }
         ) {
             val scale = transformState.scale
-            val offset = transformState.offset
             val cellSize = size.width / cols
+            val onScreenCellSize = cellSize * scale
+
+            val lowerThresholdPx = with(density) { 5.dp.toPx() }
+            val upperThresholdPx = with(density) { 10.dp.toPx() }
+
+            val transitionProgress =
+                ((onScreenCellSize - lowerThresholdPx) / (upperThresholdPx - lowerThresholdPx))
+                    .coerceIn(0f, 1f)
+
+            val (grayscaleAlpha, numbersAlpha, showGridLines) = when {
+                isComplete -> Triple(0f, 0f, false)
+                onScreenCellSize < lowerThresholdPx -> Triple(1f, 0f, false)
+                onScreenCellSize < upperThresholdPx -> Triple(
+                    1f - transitionProgress,
+                    transitionProgress,
+                    true
+                )
+
+                else -> Triple(0f, 1f, true)
+            }
+
+            val destinationSize = IntSize(size.width.toInt(), size.height.toInt())
 
             drawRect(Color.White, size = size)
 
-            val destinationSize = IntSize(size.width.toInt(), size.height.toInt())
+            if (grayscaleAlpha > 0.01f) {
+                grayscaleBitmap?.let {
+                    drawImage(
+                        image = it,
+                        dstSize = destinationSize,
+                        filterQuality = FilterQuality.None,
+                        alpha = grayscaleAlpha
+                    )
+                }
+            }
 
             highlightBitmap?.let {
                 drawImage(
@@ -155,12 +207,13 @@ fun PixelArtGrid(
                 )
             }
 
-            if (!isComplete) {
-                val strokeWidth = 1.dp.toPx() / scale
+            if (showGridLines) {
+                val strokeWidth = 1.dp.toPx() / 8
+                val lineColor = Color.DarkGray.copy(alpha = 0.7f)
                 for (i in 0..cols) {
                     val x = i * cellSize
                     drawLine(
-                        Color.LightGray,
+                        lineColor,
                         start = Offset(x, 0f),
                         end = Offset(x, size.height),
                         strokeWidth = strokeWidth
@@ -169,7 +222,7 @@ fun PixelArtGrid(
                 for (i in 0..rows) {
                     val y = i * cellSize
                     drawLine(
-                        Color.LightGray,
+                        lineColor,
                         start = Offset(0f, y),
                         end = Offset(size.width, y),
                         strokeWidth = strokeWidth
@@ -185,8 +238,7 @@ fun PixelArtGrid(
                 )
             }
 
-            val onScreenCellSize = cellSize * scale
-            if (!isComplete && onScreenCellSize > 10.dp.toPx()) {
+            if (numbersAlpha > 0.01f) {
                 fun screenToGridCoordinates(screenOffset: Offset): Offset {
                     val gridRenderSize = getGridRenderSize(cols, rows, viewportSize)
                     val gridRenderWidth = gridRenderSize.width
@@ -194,7 +246,7 @@ fun PixelArtGrid(
 
                     val centeredTap =
                         screenOffset - Offset(viewportSize.width / 2f, viewportSize.height / 2f)
-                    val transformedOffset = (centeredTap - offset) / scale
+                    val transformedOffset = (centeredTap - transformState.offset) / scale
                     return transformedOffset + Offset(gridRenderWidth / 2f, gridRenderHeight / 2f)
                 }
 
@@ -217,8 +269,8 @@ fun PixelArtGrid(
                     ((bottomRightOnGrid.x / cellSize) + buffer).toInt().coerceIn(0, cols - 1)
 
                 val textStyle = TextStyle(
-                    color = Color.DarkGray,
-                    fontSize = (cellSize / 2).toSp()
+                    color = Color.DarkGray.copy(alpha = numbersAlpha),
+                    fontSize = (cellSize * 0.5f).toSp()
                 )
 
                 for (row in firstVisibleRow..lastVisibleRow) {
