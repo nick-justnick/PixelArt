@@ -1,9 +1,10 @@
 package com.example.pixelart.ui.coloring
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -11,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,15 +21,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.example.pixelart.data.model.Pixel
 import com.example.pixelart.ui.coloring.composables.GlobalProgressIndicator
 import com.example.pixelart.ui.coloring.composables.PixelArtGrid
-import com.example.pixelart.ui.coloring.gestures.coloringGesture
 import kotlinx.coroutines.launch
-import kotlin.math.pow
 
 @Composable
 fun PixelArtCanvas(
@@ -45,6 +47,7 @@ fun PixelArtCanvas(
     val grid = uiState.grid
     val rows = grid.size
     val cols = grid.firstOrNull()?.size ?: 0
+    if (rows == 0 || cols == 0) return
 
     LaunchedEffect(uiState.isComplete) {
         if (uiState.isComplete) {
@@ -65,27 +68,6 @@ fun PixelArtCanvas(
         )
     }
 
-    val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
-        val newScale = (transformState.scale * zoomChange).coerceIn(1f, cols / 8f)
-        val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
-        val scaledGridSize = gridRenderSize * newScale
-        val maxOffset = Offset(
-            (scaledGridSize.width - viewportSize.width).coerceAtLeast(0f),
-            (scaledGridSize.height - viewportSize.height).coerceAtLeast(0f)
-        )
-        val minOffset = -maxOffset
-
-        transformState = transformState.copy(
-            scale = newScale,
-            offset = (transformState.offset + panChange).let {
-                Offset(
-                    it.x.coerceIn(minOffset.x, maxOffset.x),
-                    it.y.coerceIn(minOffset.y, maxOffset.y)
-                )
-            }
-        )
-    }
-
     Box(
         modifier = modifier
             .onSizeChanged { viewportSize = it }
@@ -101,23 +83,80 @@ fun PixelArtCanvas(
                             selectedColorIndex = uiState.selectedColorIndex
                         )
                     }
+                    var isColoring by remember { mutableStateOf(false) }
+                    val currentGrid by rememberUpdatedState(grid)
+                    val currentIsColoring by rememberUpdatedState(isColoring)
                     Modifier
-                        .coloringGesture(
-                            grid = grid,
-                            selectedColorIndex = uiState.selectedColorIndex,
-                            getCellAtOffset = getCell,
-                            onPixelTapped = onPixelTapped
-                        )
+                        .pointerInput(Unit) {
+                            detectTransformGestures { centroid, pan, zoom, _ ->
+                                if (!currentIsColoring) {
+                                    val oldScale = transformState.scale
+                                    val newScale = (oldScale * zoom).coerceIn(1f, (cols / 8f))
+
+                                    val scaledGridSize =
+                                        getGridRenderSize(cols, rows, viewportSize) * newScale
+                                    val maxOffsetX = (scaledGridSize.width - viewportSize.width)
+                                        .coerceAtLeast(0f)
+                                    val maxOffsetY = (scaledGridSize.height - viewportSize.height)
+                                        .coerceAtLeast(0f)
+
+                                    val centeredCentroid =
+                                        centroid - Offset(size.width / 2f, size.height / 2f)
+                                    val effectiveZoom = newScale / oldScale
+                                    val newOffset = centeredCentroid * (1 - effectiveZoom) +
+                                            (transformState.offset + pan) * effectiveZoom
+
+                                    transformState = TransformState(
+                                        scale = newScale,
+                                        offset = Offset(
+                                            newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
+                                            newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        .pointerInput(uiState.selectedColorIndex) {
+                            val coloredCells = mutableSetOf<Pair<Int, Int>>()
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+
+                                val (row, col) = getCell(down.position) ?: return@awaitEachGesture
+                                val pixel = currentGrid[row][col]
+                                if (pixel.colorIndex == uiState.selectedColorIndex && !pixel.isColored) {
+                                    isColoring = true
+                                    onPixelTapped(row, col)
+                                    coloredCells.add(row to col)
+                                    down.consume()
+                                }
+
+                                if (!isColoring) return@awaitEachGesture
+                                var pointer = down
+                                while (pointer.pressed) {
+                                    pointer = awaitPointerEvent().changes
+                                        .firstOrNull { it.id == down.id } ?: break
+
+                                    if (pointer.pressed && pointer.positionChanged()) {
+                                        getCell(pointer.position)?.let { (row, col) ->
+                                            if (coloredCells.add(row to col))
+                                                onPixelTapped(row, col)
+                                        }
+                                        if (pointer.positionChange() != Offset.Zero)
+                                            pointer.consume()
+                                    }
+                                }
+                                coloredCells.clear()
+                                isColoring = false
+                            }
+                        }
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = { offset ->
-                                    getCell(offset)?.let { (row, col) ->
-                                        onPixelTapped(row, col)
-                                    }
+                                    getCell(offset)?.let { (row, col) -> onPixelTapped(row, col) }
                                 }
                             )
                         }
-                        .transformable(state = transformableState)
+
                 } else Modifier
             )
     ) {
@@ -150,11 +189,9 @@ private fun getForgivingCellAtOffset(
     selectedColorIndex: Int
 ): Pair<Int, Int>? {
     val rows = grid.size
-    if (rows == 0) return null
     val cols = grid.first().size
-    if (cols == 0 || viewportSize == IntSize.Zero) return null
 
-    val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
+    val gridRenderSize = getGridRenderSize(cols, rows, viewportSize)
     val cellSize = gridRenderSize.width / cols
 
     val centeredTap = tapOffset - Offset(viewportSize.width / 2f, viewportSize.height / 2f)
@@ -162,57 +199,49 @@ private fun getForgivingCellAtOffset(
     val originalTap =
         transformedOffset + Offset(gridRenderSize.width / 2f, gridRenderSize.height / 2f)
 
-    val initialCol = (originalTap.x / cellSize).toInt()
-    val initialRow = (originalTap.y / cellSize).toInt()
+    val col = (originalTap.x / cellSize).toInt()
+    val row = (originalTap.y / cellSize).toInt()
 
-    if (initialRow !in 0 until rows || initialCol !in 0 until cols) return null
+    if (row !in 0 until rows || col !in 0 until cols) return null
 
-    if (grid[initialRow][initialCol].colorIndex == selectedColorIndex)
-        return initialRow to initialCol
+    if (grid[row][col].colorIndex == selectedColorIndex)
+        return row to col
 
-    val tapInCellX = originalTap.x - initialCol * cellSize
-    val tapInCellY = originalTap.y - initialRow * cellSize
+    val tapInCellX = originalTap.x - col * cellSize
+    val tapInCellY = originalTap.y - row * cellSize
     val forgiveness = cellSize * 0.15f
 
-    val isTop = tapInCellY < forgiveness
-    val isBottom = tapInCellY > cellSize - forgiveness
-    val isLeft = tapInCellX < forgiveness
-    val isRight = tapInCellX > cellSize - forgiveness
-
-    if (!isTop && !isBottom && !isLeft && !isRight)
-        return initialRow to initialCol
-
-    val neighbors = mutableListOf<Pair<Int, Int>>().apply {
-        if (isTop) add(initialRow - 1 to initialCol)
-        if (isBottom) add(initialRow + 1 to initialCol)
-        if (isLeft) add(initialRow to initialCol - 1)
-        if (isRight) add(initialRow to initialCol + 1)
-        if (isTop && isLeft) add(initialRow - 1 to initialCol - 1)
-        if (isTop && isRight) add(initialRow - 1 to initialCol + 1)
-        if (isBottom && isLeft) add(initialRow + 1 to initialCol - 1)
-        if (isBottom && isRight) add(initialRow + 1 to initialCol + 1)
+    val verticalPlace = when {
+        tapInCellY < forgiveness -> -1
+        tapInCellY > cellSize - forgiveness -> 1
+        else -> 0
+    }
+    val horizontalPlace = when {
+        tapInCellX < forgiveness -> -1
+        tapInCellX > cellSize - forgiveness -> 1
+        else -> 0
     }
 
-    val correctNeighbors = neighbors.filter { (r, c) ->
-        r in 0 until rows && c in 0 until cols && grid[r][c].colorIndex == selectedColorIndex
-    }
+    if (verticalPlace == 0 && horizontalPlace == 0)
+        return row to col
 
-    return when (correctNeighbors.size) {
-        0 -> initialRow to initialCol
-        1 -> correctNeighbors.first()
-        else -> {
-            correctNeighbors.minBy { (r, c) ->
-                val centerX = c * cellSize + cellSize / 2
-                val centerY = r * cellSize + cellSize / 2
-                val dx = originalTap.x - centerX
-                val dy = originalTap.y - centerY
-                dx.pow(2) + dy.pow(2)
-            }
+    val neighbors = mutableListOf<Pair<Int, Int>>()
+        .apply {
+            if (verticalPlace != 0)
+                add(row + verticalPlace to col)
+            if (horizontalPlace != 0)
+                add(row to col + horizontalPlace)
+            if (verticalPlace != 0 && horizontalPlace != 0)
+                add(row + verticalPlace to col + horizontalPlace)
         }
-    }
+        .filter { (r, c) ->
+            r in 0 until rows && c in 0 until cols && grid[r][c].colorIndex == selectedColorIndex
+        }
+
+    return if (neighbors.isEmpty()) row to col else neighbors.first()
 }
 
-internal fun calculateGridRenderSize(
+internal fun getGridRenderSize(
     gridCols: Int,
     gridRows: Int,
     viewportSize: IntSize,

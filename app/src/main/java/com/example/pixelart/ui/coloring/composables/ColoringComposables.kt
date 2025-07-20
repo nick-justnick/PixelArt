@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.createBitmap
 import com.example.pixelart.data.model.Pixel
 import com.example.pixelart.ui.coloring.TransformState
-import com.example.pixelart.ui.coloring.calculateGridRenderSize
+import com.example.pixelart.ui.coloring.getGridRenderSize
 
 @Composable
 fun GlobalProgressIndicator(progress: Float, modifier: Modifier = Modifier) {
@@ -188,7 +188,7 @@ fun PixelArtGrid(
             val onScreenCellSize = cellSize * scale
             if (!isComplete && onScreenCellSize > 10.dp.toPx()) {
                 fun screenToGridCoordinates(screenOffset: Offset): Offset {
-                    val gridRenderSize = calculateGridRenderSize(cols, rows, viewportSize)
+                    val gridRenderSize = getGridRenderSize(cols, rows, viewportSize)
                     val gridRenderWidth = gridRenderSize.width
                     val gridRenderHeight = gridRenderSize.height
 
