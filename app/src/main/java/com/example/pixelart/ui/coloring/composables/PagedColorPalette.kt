@@ -2,7 +2,6 @@ package com.example.pixelart.ui.coloring.composables
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,7 +16,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,7 +29,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -140,19 +138,15 @@ private fun ColorTile(
     Box(
         modifier = modifier
             .background(color)
-            .border(
-                width = if (isSelected) 3.dp else 0.dp,
-                color = if (isSelected) MaterialTheme.colorScheme.onBackground else Color.Transparent
-            )
             .clickable { onColorSelected(index) },
         contentAlignment = Alignment.Center
     ) {
         if (isDone) {
             Icon(
-                imageVector = Icons.Default.Check,
+                imageVector = Icons.Rounded.Check,
                 contentDescription = "Done",
                 tint = textColor,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(48.dp)
             )
         } else {
             Column(
@@ -162,18 +156,19 @@ private fun ColorTile(
                 Text(
                     text = (index + 1).toString(),
                     color = textColor,
-                    fontSize = if (isSelected) 24.sp else 18.sp,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontSize = if (isSelected) 32.sp else 24.sp
+                    )
                 )
                 if (isSelected) {
                     Spacer(Modifier.height(4.dp))
                     Canvas(
                         modifier = Modifier
-                            .width(32.dp)
+                            .width(40.dp)
                             .height(8.dp)
                     ) {
-                        val trackWidth = 6.dp.toPx()
-                        val progressWidth = 4.dp.toPx()
+                        val trackWidth = 8.dp.toPx()
+                        val progressWidth = 6.dp.toPx()
                         drawLine(
                             color = textColor,
                             start = Offset(0f, center.y),

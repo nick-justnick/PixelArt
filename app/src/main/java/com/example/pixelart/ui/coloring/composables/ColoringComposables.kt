@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,7 +40,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -50,6 +50,7 @@ import androidx.core.graphics.createBitmap
 import com.example.pixelart.data.model.Pixel
 import com.example.pixelart.ui.coloring.TransformState
 import com.example.pixelart.ui.coloring.getGridRenderSize
+import com.example.pixelart.ui.theme.MontserratFamily
 
 @Composable
 fun GlobalProgressIndicator(progress: Float, modifier: Modifier = Modifier) {
@@ -66,7 +67,8 @@ fun GlobalProgressIndicator(progress: Float, modifier: Modifier = Modifier) {
         Text(
             text = "${(progress * 100).toInt()}%",
             fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            fontFamily = MontserratFamily
         )
     }
 }
@@ -91,6 +93,8 @@ fun PixelArtGrid(
     var grayscaleBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
+
+    val baseTextStyle = MaterialTheme.typography.labelMedium
 
     LaunchedEffect(grid) {
         if (cols == 0 || rows == 0) return@LaunchedEffect
@@ -166,6 +170,7 @@ fun PixelArtGrid(
             val onScreenCellSize = cellSize * scale
 
             val lowerThresholdPx = with(density) { 5.dp.toPx() }
+            val middleThresholdPx = with(density) { 7.dp.toPx() }
             val upperThresholdPx = with(density) { 10.dp.toPx() }
 
             val transitionProgress =
@@ -175,11 +180,11 @@ fun PixelArtGrid(
             val (grayscaleAlpha, numbersAlpha, showGridLines) = when {
                 isComplete -> Triple(0f, 0f, false)
                 onScreenCellSize < lowerThresholdPx -> Triple(1f, 0f, false)
-                onScreenCellSize < upperThresholdPx -> Triple(
-                    1f - transitionProgress,
-                    transitionProgress,
-                    true
-                )
+                onScreenCellSize < middleThresholdPx ->
+                    Triple(1f - transitionProgress, transitionProgress, false)
+
+                onScreenCellSize < upperThresholdPx ->
+                    Triple(1f - transitionProgress, transitionProgress, true)
 
                 else -> Triple(0f, 1f, true)
             }
@@ -208,25 +213,14 @@ fun PixelArtGrid(
             }
 
             if (showGridLines) {
-                val strokeWidth = 1.dp.toPx() / 8
                 val lineColor = Color.DarkGray.copy(alpha = 0.7f)
                 for (i in 0..cols) {
                     val x = i * cellSize
-                    drawLine(
-                        lineColor,
-                        start = Offset(x, 0f),
-                        end = Offset(x, size.height),
-                        strokeWidth = strokeWidth
-                    )
+                    drawLine(lineColor, start = Offset(x, 0f), end = Offset(x, size.height))
                 }
                 for (i in 0..rows) {
                     val y = i * cellSize
-                    drawLine(
-                        lineColor,
-                        start = Offset(0f, y),
-                        end = Offset(size.width, y),
-                        strokeWidth = strokeWidth
-                    )
+                    drawLine(lineColor, start = Offset(0f, y), end = Offset(size.width, y))
                 }
             }
 
@@ -268,9 +262,9 @@ fun PixelArtGrid(
                 val lastVisibleCol =
                     ((bottomRightOnGrid.x / cellSize) + buffer).toInt().coerceIn(0, cols - 1)
 
-                val textStyle = TextStyle(
+                val textStyle = baseTextStyle.copy(
                     color = Color.DarkGray.copy(alpha = numbersAlpha),
-                    fontSize = (cellSize * 0.5f).toSp()
+                    fontSize = (cellSize * 0.45f).toSp()
                 )
 
                 for (row in firstVisibleRow..lastVisibleRow) {
