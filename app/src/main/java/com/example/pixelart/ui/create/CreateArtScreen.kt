@@ -111,22 +111,20 @@ fun CreateArtScreen(
 
             SettingSlider(
                 label = stringResource(R.string.detailing),
-                value = uiState.width.toFloat(),
-                onValueChange = { viewModel.onWidthChange(it.toInt()) },
+                value = uiState.longestSide.toFloat(),
+                onValueChange = { viewModel.onLongestSideChange(it.roundToInt()) },
                 range = 40f..120f,
                 steps = 15,
-                valueText = "${uiState.width} px"
+                valueText = "${uiState.width} x ${uiState.height} px"
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            val colorRangeStart = uiState.recommendedColorCount * 0.8f
-            val colorRangeEnd = uiState.recommendedColorCount * 1.2f
             SettingSlider(
-                label = stringResource(R.string.number_of_colors),
+                label = "Количество цветов",
                 value = uiState.colorCount.toFloat(),
                 onValueChange = { viewModel.onColorCountChange(it.roundToInt()) },
-                range = colorRangeStart..colorRangeEnd,
+                range = uiState.colorRange.first.toFloat()..uiState.colorRange.last.toFloat(),
                 valueText = "${uiState.colorCount}"
             )
 

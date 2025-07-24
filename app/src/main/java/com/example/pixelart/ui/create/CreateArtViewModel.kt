@@ -33,11 +33,13 @@ data class CreateArtUiState(
     val previewBitmap: Bitmap? = null,
     val isLoading: Boolean = true,
     val isProcessing: Boolean = false,
+    val longestSide: Int = 80,
     val width: Int = 80,
+    val height: Int = 80,
     val useFilter: Boolean = true,
-    val recommendedColorCount: Int = 64,
     val colorCount: Int = 64,
-    val colorSliderPosition: Float = 0.5f
+    val colorSliderPosition: Float = 0.5f,
+    val colorRange: IntRange = 50..80
 )
 
 class CreateArtViewModel(
@@ -56,6 +58,9 @@ class CreateArtViewModel(
     init {
         viewModelScope.launch {
             loadSourceBitmap()
+            _uiState.value.sourceBitmap?.let {
+                onLongestSideChange(_uiState.value.longestSide)
+            }
             triggerPreviewUpdate()
         }
     }
@@ -74,17 +79,31 @@ class CreateArtViewModel(
         }
     }
 
-    fun onWidthChange(newWidth: Int) {
-        val recommended = calculateRecommendedColorCount(newWidth)
+    fun onLongestSideChange(newLongestSide: Int) {
+        val source = _uiState.value.sourceBitmap ?: return
+        val aspectRatio = source.width.toFloat() / source.height.toFloat()
+
+        val (newWidth, newHeight) = if (aspectRatio >= 1) {
+            newLongestSide to (newLongestSide / aspectRatio).roundToInt()
+        } else {
+            (newLongestSide * aspectRatio).roundToInt() to newLongestSide
+        }
+
+        val recommended = calculateRecommendedColorCount(newWidth, newHeight)
         val oldPosition = _uiState.value.colorSliderPosition
 
-        val newColorCount = (recommended * (0.8f + 0.4f * oldPosition)).roundToInt()
+        val rangeStart = roundDownTo5((recommended * 0.8f).roundToInt())
+        val rangeEnd = roundUpTo5((recommended * 1.2f).roundToInt())
+
+        val newColorCount = (rangeStart + (rangeEnd - rangeStart) * oldPosition).roundToInt()
 
         _uiState.update {
             it.copy(
+                longestSide = newLongestSide,
                 width = newWidth,
-                recommendedColorCount = recommended,
-                colorCount = newColorCount
+                height = newHeight,
+                colorCount = newColorCount,
+                colorRange = rangeStart..rangeEnd
             )
         }
         triggerPreviewUpdate()
@@ -92,10 +111,10 @@ class CreateArtViewModel(
 
     fun onColorCountChange(newColorCount: Int) {
         val state = _uiState.value
-        val rangeStart = state.recommendedColorCount * 0.8f
-        val rangeEnd = state.recommendedColorCount * 1.2f
+        val rangeStart = state.colorRange.first
+        val rangeEnd = state.colorRange.last
         val range = rangeEnd - rangeStart
-        val newPosition = if (range > 0) (newColorCount - rangeStart) / range else 0.5f
+        val newPosition = if (range > 0) (newColorCount - rangeStart).toFloat() / range else 0.5f
 
         _uiState.update {
             it.copy(
@@ -107,7 +126,6 @@ class CreateArtViewModel(
 
     fun onFilterChange(useFilter: Boolean) {
         _uiState.update { it.copy(useFilter = useFilter) }
-        triggerPreviewUpdate()
     }
 
     private fun triggerPreviewUpdate() {
@@ -139,10 +157,7 @@ class CreateArtViewModel(
         }
     }
 
-    private fun calculateRecommendedColorCount(width: Int): Int {
-        val source = _uiState.value.sourceBitmap ?: return 64
-        val aspectRatio = source.width.toFloat() / source.height.toFloat()
-        val height = (width / aspectRatio).toInt()
+    private fun calculateRecommendedColorCount(width: Int, height: Int): Int {
         val totalPixels = width * height
         return (colorFactor * sqrt(totalPixels.toFloat())).roundToInt().coerceIn(8, 256)
     }
@@ -162,6 +177,9 @@ class CreateArtViewModel(
             _uiState.update { it.copy(isProcessing = false) }
         }
     }
+
+    private fun roundDownTo5(n: Int): Int = (n / 5) * 5
+    private fun roundUpTo5(n: Int): Int = ((n + 4) / 5) * 5
 }
 
 class CreateArtViewModelFactory(

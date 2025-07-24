@@ -209,7 +209,7 @@ private fun getForgivingCellAtOffset(
 
     val tapInCellX = originalTap.x - col * cellSize
     val tapInCellY = originalTap.y - row * cellSize
-    val forgiveness = cellSize * 0.15f
+    val forgiveness = cellSize * 0.2f
 
     val verticalPlace = when {
         tapInCellY < forgiveness -> -1
