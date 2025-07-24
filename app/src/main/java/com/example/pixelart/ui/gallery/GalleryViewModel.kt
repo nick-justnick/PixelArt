@@ -1,7 +1,5 @@
 package com.example.pixelart.ui.gallery
 
-import android.content.Context
-import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -14,19 +12,6 @@ import kotlinx.coroutines.launch
 class GalleryViewModel(private val repository: ArtProjectRepository) : ViewModel() {
     val projects = repository.getAllProjects()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    fun createNewProject(
-        context: Context,
-        uri: Uri,
-        width: Int,
-        colorCount: Int,
-        onComplete: (Long) -> Unit
-    ) {
-        viewModelScope.launch {
-            val newId = repository.createNewProject(context, uri, width, colorCount)
-            onComplete(newId)
-        }
-    }
 
     fun deleteProject(project: ArtProject) {
         viewModelScope.launch {

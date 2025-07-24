@@ -11,16 +11,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
@@ -28,7 +25,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,8 +41,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -66,8 +60,6 @@ fun GalleryScreen(navController: NavController) {
     val viewModel: GalleryViewModel = viewModel(factory = GalleryViewModelFactory(repository))
 
     val projects by viewModel.projects.collectAsState()
-    var showSettingsDialog by remember { mutableStateOf(false) }
-    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
     var projectForOptions by remember { mutableStateOf<ArtProject?>(null) }
     var showResetConfirmation by remember { mutableStateOf<ArtProject?>(null) }
@@ -77,8 +69,8 @@ fun GalleryScreen(navController: NavController) {
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
             if (uri != null) {
-                selectedImageUri = uri
-                showSettingsDialog = true
+                val encodedUri = Uri.encode(uri.toString())
+                navController.navigate("create/$encodedUri")
             }
         }
     )
@@ -127,23 +119,6 @@ fun GalleryScreen(navController: NavController) {
                 }
             }
         }
-    }
-
-    if (showSettingsDialog && selectedImageUri != null) {
-        SettingsDialog(
-            onDismiss = { showSettingsDialog = false },
-            onConfirm = { width, colorCount ->
-                showSettingsDialog = false
-                viewModel.createNewProject(
-                    context,
-                    selectedImageUri!!,
-                    width,
-                    colorCount
-                ) { newId ->
-                    navController.navigate("coloring/$newId")
-                }
-            }
-        )
     }
 
     projectForOptions?.let { project ->
@@ -256,57 +231,6 @@ fun ConfirmationDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.cancel))
-            }
-        }
-    )
-}
-
-@Composable
-fun SettingsDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (width: Int, colorCount: Int) -> Unit,
-) {
-    var width by remember { mutableStateOf("64") }
-    var colorCount by remember { mutableStateOf("16") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Configure Artwork") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = width,
-                    onValueChange = { width = it },
-                    label = { Text("Grid Width") },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Next
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = colorCount,
-                    onValueChange = { colorCount = it },
-                    label = { Text("Number of Colors") },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Done
-                    )
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                val widthInt = width.toIntOrNull() ?: 64
-                val colorsInt = colorCount.toIntOrNull() ?: 16
-                onConfirm(widthInt, colorsInt)
-            }) {
-                Text("Create")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
             }
         }
     )

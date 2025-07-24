@@ -25,12 +25,13 @@ object ImageProcessor {
         imageUri: Uri,
         targetWidth: Int,
         colorCount: Int,
+        useFilter: Boolean
     ) = withContext(Dispatchers.Default) {
         val originalBitmap = loadBitmap(context, imageUri)
         val aspectRatio = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
         val targetHeight = (targetWidth / aspectRatio).toInt()
 
-        val scaledBitmap = originalBitmap.scale(targetWidth, targetHeight)
+        val scaledBitmap = originalBitmap.scale(targetWidth, targetHeight, useFilter)
 
         val pixels = IntArray(targetWidth * targetHeight)
         scaledBitmap.getPixels(pixels, 0, targetWidth, 0, 0, targetWidth, targetHeight)
@@ -41,7 +42,8 @@ object ImageProcessor {
         }.toMutableList()
 
         val labPalette = medianCut(labPixels, colorCount)
-        val rgbPalette = labPalette.map { Color(ColorUtils.LABToColor(it[0], it[1], it[2])) }
+        val rgbPalette =
+            labPalette.map { Color(ColorUtils.LABToColor(it[0], it[1], it[2])) }.distinct()
 
         val grid = List(targetHeight) { row ->
             List(targetWidth) { col ->

@@ -14,4 +14,8 @@
     <string name="do_delete_artwork">Delete Artwork</string>
     <string name="cancel">Cancel</string>
     <string name="confirm">Confirm</string>
+    <string name="create_artwork">Create Artwork</string>
+    <string name="detailing">Detailing</string>
+    <string name="number_of_colors">Number of Colors</string>
+    <string name="anti_aliasing">Anti-aliasing</string>
 </resources>

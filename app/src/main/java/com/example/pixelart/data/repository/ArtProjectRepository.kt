@@ -27,9 +27,11 @@ class ArtProjectRepository(private val artProjectDao: ArtProjectDao) {
         context: Context,
         imageUri: Uri,
         width: Int,
-        colorCount: Int
+        colorCount: Int,
+        useFilter: Boolean
     ): Long {
-        val processedArt = ImageProcessor.imageToPixelArt(context, imageUri, width, colorCount)
+        val processedArt =
+            ImageProcessor.imageToPixelArt(context, imageUri, width, colorCount, useFilter)
         val thumbnail = generateThumbnail(processedArt.grid, processedArt.palette)
         val newProject = ArtProject(
             gridState = processedArt.grid,
